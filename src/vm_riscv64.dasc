@@ -83,7 +83,7 @@
 |.define FTMP4,		f31
 |
 |// Stack layout while in interpreter. Must match with lj_frame.h.
-|// LoongArch64 hard-float.
+|// RISC-V 64 lp64d.
 |
 |.define CFRAME_SPACE,	248	// Delta for sp.
 |
@@ -207,9 +207,9 @@
 |.endmacro
 |
 |.macro .addxi, a, b, c
-|  lui a, c
-|  srai a, a, 20
-|  add a, a, b
+|  lui x31, c
+|  srai x31, x31, 12
+|  add a, x31, b
 |.endmacro
 |
 |.macro .liw, a, b
@@ -358,11 +358,11 @@
 |  decode_OP8b TMP1
 |  add TMP0, DISPATCH, TMP1
 |   decode_RD8a RD, INS
-|  ld AT, 0(TMP0)
+|  ld TMP4, 0(TMP0)
 |   decode_RA8a RA, INS
 |   decode_RD8b RD
 |   decode_RA8b RA
-|  jr AT
+|  jr TMP4
 |.endmacro
 |.macro ins_NEXT
 |  ins_NEXT1
@@ -2196,29 +2196,35 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  add RD, BASE, RD
     if (op == BC_ISLT || op == BC_ISGE) {
       |  ld CARG1, 0(RA)
-      |  ld CARG2, 0(RD)
+      |   ld CARG2, 0(RD)
       |  gettp CARG3, CARG1
-      |  gettp CARG4, CARG2
+      |   gettp CARG4, CARG2
     } else {
       |  ld CARG2, 0(RA)
-      |  ld CARG1, 0(RD)
+      |   ld CARG1, 0(RD)
       |  gettp CARG3, CARG2
-      |  gettp CARG4, CARG1
+      |   gettp CARG4, CARG1
     }
     |  lhu TMP2, OFS_RD(PC)		// TMP2=jump
-    |  addi PC, PC, 4
+    |   addi PC, PC, 4
     |  bne CARG3, TISNUM, >2
     |  decode_BC4b TMP2
-    |  bne CARG4, TISNUM, >5
+    |   bne CARG4, TISNUM, >5
     |  sext.w CARG1, CARG1
     |  sext.w CARG2, CARG2
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |  lui TMP3, r0, -0x20		// -BCBIAS_J*4
     |  slt TMP1, CARG1, CARG2
     |  addw TMP2, TMP2, TMP3		// TMP2=(jump-0x8000)<<2
     if (op == BC_ISLT || op == BC_ISGT) {
-      |  maskeqz TMP2, TMP2, TMP1
+      // |  maskeqz TMP2, TMP2, TMP1
+      |  snez TMP4, TMP1
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
     } else {
-      |  masknez TMP2, TMP2,TMP1
+      // |  masknez TMP2, TMP2,TMP1
+      |  seqz TMP4, TMP1
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
     }
     |1:
     |  add PC, PC, TMP2
@@ -2226,25 +2232,32 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |2:  // RA is not an integer.
     |  sltiu TMP1, CARG3, LJ_TISNUM
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |  lui TMP3, -0x20		// -BCBIAS_J*4
     |  beqz TMP1, ->vmeta_comp
     |  sltiu TMP1, CARG4, LJ_TISNUM
     |  decode_BC4b TMP2
     |  beqz TMP1, >4
     |  fmv.d.x FTMP0, CARG1
     |  fmv.d.x FTMP2, CARG2
+    |  addw TMP2, TMP2, TMP3
     |3:  // RA and RD are both numbers.
     if (op == BC_ISLT || op == BC_ISGE) {
-      |  fcmp.clt.d FCC0, FTMP0, FTMP2
+      // |  fcmp.clt.d FCC0, FTMP0, FTMP2
+      |  flt.d TMP3, FTMP0, FTMP2
     } else {
-      |  fcmp.cult.d FCC0, FTMP0, FTMP2
+      // |  fcmp.cult.d FCC0, FTMP0, FTMP2
+      |  fle.d TMP3, FTMP0, FTMP2
     }
-    |  addw TMP2, TMP2, TMP3
-    |  movcf2gr TMP3, FCC0
     if (op == BC_ISLT || op == BC_ISGT) {
-      |  maskeqz TMP2, TMP2, TMP3
+      // |  maskeqz TMP2, TMP2, TMP3
+      |  snez TMP4, TMP3
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
     } else {
-      |  masknez TMP2, TMP2, TMP3
+      // |  masknez TMP2, TMP2, TMP3
+      |  seqz TMP4, TMP3
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
     }
     |  j <1
     |
@@ -2264,7 +2277,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |5:  // RA is an integer, RD is not an integer
     |  sltiu TMP1, CARG4, LJ_TISNUM
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |  lui TMP3, r0, -0x20		// -BCBIAS_J*4
     |  beqz TMP1, ->vmeta_comp
     |  // RA is an integer, RD is a number. Convert RA to a number.
     if (op == BC_ISLT || op == BC_ISGE) {
@@ -2283,24 +2296,24 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     vk = op == BC_ISEQV;
     |  // RA = src1*8, RD = src2*8, JMP with RD = target
     |  add RA, BASE, RA
-    |  add RD, BASE, RD
-    |  addi PC, PC, 4
+    |   add RD, BASE, RD
+    |    addi PC, PC, 4
     |  ld CARG1, 0(RA)
-    |  ld CARG2, 0(RD)
-    |  lhu TMP2, -4+OFS_RD(PC)
+    |   ld CARG2, 0(RD)
+    |    lhu TMP2, -4+OFS_RD(PC)
     |  gettp CARG3, CARG1
-    |  gettp CARG4, CARG2
+    |   gettp CARG4, CARG2
     |  sltu TMP0, TISNUM, CARG3
-    |  sltu TMP1, TISNUM, CARG4
+    |   sltu TMP1, TISNUM, CARG4
     |  or TMP0, TMP0, TMP1
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |  lui TMP3, -0x20		// -BCBIAS_J*4
     if (vk) {
       |  beqz TMP0, ->BC_ISEQN_Z
     } else {
       |  beqz TMP0, ->BC_ISNEN_Z
     }
     |// Either or both types are not numbers.
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |  lui TMP3, r0, -0x20		// -BCBIAS_J*4
     |  decode_BC4b TMP2
     |  addw TMP2, TMP2, TMP3		// (jump-0x8000)<<2
     |  bne CARG1, CARG2, >2
@@ -2315,7 +2328,10 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |2:  // Check if the tags are the same and it's a table or userdata.
     |  xor TMP3, CARG3, CARG4			// Same type?
     |  sltiu TMP0, CARG3, LJ_TISTABUD+1		// Table or userdata? TMP0=1
-    |  masknez TMP0, TMP0, TMP3		// TMP0=0: not same type, or same type table/userdata
+    |  // masknez TMP0, TMP0, TMP3		// TMP0=0: not same type, or same type table/userdata
+    |  beqz TMP3, >3
+    |  xor TMP0, TMP0, TMP0		// TMP0=0: not same type, or same type table/userdata
+    |3:
     |  cleartp TAB:TMP1, CARG1
     if (vk) {
       |  beqz TMP0, <1
@@ -2329,13 +2345,13 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  beqz TAB:TMP3, <1		// No metatable?
       |  lbu TMP3, TAB:TMP3->nomm
       |  andi TMP3, TMP3, 1<<MM_eq
-      |  .liw TMP0, 0		// ne = 0
+      |. liw TMP0, 0		// ne = 0
       |  bnez TMP3, <1			// Or 'no __eq' flag set?
     } else {
       |  beqz TAB:TMP3,->BC_ISEQV_Z	// No metatable?
       |  lbu TMP3, TAB:TMP3->nomm
       |  andi TMP3, TMP3, 1<<MM_eq
-      |  .liw TMP0, 1		// ne = 1
+      |. liw TMP0, 1		// ne = 1
       |  bnez TMP3, ->BC_ISEQV_Z	// Or 'no __eq' flag set?
     }
     |  j ->vmeta_equal			// Handle __eq metamethod.
@@ -2345,21 +2361,27 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     vk = op == BC_ISEQS;
     |  // RA = src*8, RD = str_const*8 (~), JMP with RD = target
     |  add RA, BASE, RA
-    |  addi PC, PC, 4
+    |   addi PC, PC, 4
     |  ld CARG1, 0(RA)
-    |  sub RD, KBASE, RD
-    |  lhu TMP2, -4+OFS_RD(PC)
-    |  ld CARG2, -8(RD)		// KBASE-8-str_const*8
-    |  .liw TMP0, LJ_TSTR
-    |  decode_BC4b TMP2
-    |  settp CARG2, TMP0
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |   sub RD, KBASE, RD
+    |    lhu TMP2, -4+OFS_RD(PC)
+    |   ld CARG2, -8(RD)		// KBASE-8-str_const*8
+    |. liw TMP0, LJ_TSTR
+    |   decode_BC4b TMP2
+    |   settp CARG2, TMP0
+    |   lui TMP3, -0x20		// -BCBIAS_J*4
     |  xor TMP0, CARG1, CARG2		// TMP2=0: A==D; TMP2!=0: A!=D
-    |  addw TMP2, TMP2, TMP3
+    |   addw TMP2, TMP2, TMP3
     if (vk) {
-      |  masknez TMP2, TMP2, TMP0
+      // |  masknez TMP2, TMP2, TMP0
+      |  seqz TMP4, TMP0
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
     } else {
-      |  maskeqz TMP2, TMP2, TMP0
+      // |  maskeqz TMP2, TMP2, TMP0
+      |  snez TMP4, TMP0
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
     }
     |  add PC, PC, TMP2
     |  ins_next
@@ -2369,14 +2391,14 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     vk = op == BC_ISEQN;
     |  // RA = src*8, RD = num_const*8, JMP with RD = target
     |  add RA, BASE, RA
-    |  add RD, KBASE, RD
+    |   add RD, KBASE, RD
     |  ld CARG1, 0(RA)
-    |  ld CARG2, 0(RD)
-    |  lhu TMP2, OFS_RD(PC)
-    |  addi PC, PC, 4
+    |   ld CARG2, 0(RD)
+    |    lhu TMP2, OFS_RD(PC)
     |  gettp CARG3, CARG1
-    |  gettp CARG4, CARG2
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |   gettp CARG4, CARG2
+    |    addi PC, PC, 4
+    |    lui TMP3, r0, -0x20		// -BCBIAS_J*4
     if (vk) {
       |->BC_ISEQN_Z:
     } else {
@@ -2389,11 +2411,17 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  xor TMP0, CARG1, CARG2		// TMP0=0: A==D; TMP0!=0: A!=D
     |1:
     if (vk) {
-      |  masknez TMP2, TMP2, TMP0
+      // |  masknez TMP2, TMP2, TMP0
+      |  seqz TMP4, TMP0
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
       |  add PC, PC, TMP2
       |2:
     } else {
-      |  maskeqz TMP2, TMP2, TMP0
+      // |  maskeqz TMP2, TMP2, TMP0
+      |  snez TMP4, TMP0
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
       |2:
       |  add PC, PC, TMP2
     }
@@ -2402,24 +2430,24 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |4:  // RA is not an integer.
     |  sltu TMP0, CARG3, TISNUM
-    |  addw TMP2, TMP2, TMP3
+    |    addw TMP2, TMP2, TMP3
     |  beqz TMP0, <2
     |  fmv.d.x FTMP0, CARG1
-    |  fmv.d.x FTMP2, CARG2
+    |   fmv.d.x FTMP2, CARG2
     |  bne CARG4, TISNUM, >5
     |// RA is a number, RD is an integer.
     |  fcvt.d.w FTMP2, FTMP2
     |
     |5:  // RA and RD are both numbers.
-    |  fcmp.cune.d FCC0, FTMP0, FTMP2
-    |  movcf2gr TMP0, FCC0
+    |  feq.d TMP0, FTMP0, FTMP2
+    |  not TMP0, TMP0
     |  j <1
     |
     |6: // RA is an integer, RD is a number.
     |  sltu TMP0, CARG4, TISNUM
     |  beqz TMP0, <2
     |  fmv.w.x FTMP0, CARG1
-    |  fmv.d.x FTMP2, CARG2
+    |   fmv.d.x FTMP2, CARG2
     |  fcvt.d.w FTMP0, FTMP0
     |  j <5
     |
@@ -2429,20 +2457,26 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     vk = op == BC_ISEQP;
     |  // RA = src*8, RD = primitive_type*8 (~), JMP with RD = target
     |  add RA, BASE, RA
-    |  srliw TMP0, RD, 3
+    |   srliw TMP0, RD, 3
     |  ld TMP1, 0(RA)
-    |  not TMP0, TMP0		// ~TMP0: ~0 ~1 ~2
-    |  lhu TMP2, OFS_RD(PC)		// TMP2: RD in next INS, branch target
+    |   not TMP0, TMP0		// ~TMP0: ~0 ~1 ~2
+    |    lhu TMP2, OFS_RD(PC)		// TMP2: RD in next INS, branch target
     |  gettp TMP1, TMP1
-    |  addi PC, PC, 4
-    |  xor TMP0, TMP1, TMP0		// TMP0=0 A=D; TMP0!=0 A!=D
+    |    addi PC, PC, 4
+    |   xor TMP0, TMP1, TMP0		// TMP0=0 A=D; TMP0!=0 A!=D
     |  decode_BC4b TMP2
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |  lui TMP3, -0x20		// -BCBIAS_J*4
     |  addw TMP2, TMP2, TMP3		// TMP2=(jump-0x8000)<<2
     if (vk) {
-      |  masknez TMP2, TMP2, TMP0
+      // |  masknez TMP2, TMP2, TMP0
+      |  seqz TMP4, TMP0
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
     } else {
-      |  maskeqz TMP2, TMP2, TMP0
+      // |  maskeqz TMP2, TMP2, TMP0
+      |  snez TMP4, TMP0
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
     }
     |  add PC, PC, TMP2
     |  ins_next
@@ -2453,14 +2487,14 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_ISTC: case BC_ISFC: case BC_IST: case BC_ISF:
     |  // RA = dst*8 or unused, RD = src*8, JMP with RD = target
     |  add RD, BASE, RD
-    |  lhu TMP2, OFS_RD(PC)
+    |   lhu TMP2, OFS_RD(PC)
     |  ld TMP0, 0(RD)
-    |  addi PC, PC, 4
+    |   addi PC, PC, 4
     |  gettp TMP0, TMP0
     |  add RA, BASE, RA
     |  sltiu TMP0, TMP0, LJ_TISTRUECOND		// TMP0=1 true; TMP0=0 false
     |  decode_BC4b TMP2
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |  lui TMP3, -0x20		// -BCBIAS_J*4
     |  ld CRET1, 0(RD)
     |  addw TMP2, TMP2, TMP3		// (jump-0x8000)<<2
     if (op == BC_IST || op == BC_ISTC) {
@@ -2502,7 +2536,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_MOV:
     |  // RA = dst*8, RD = src*8
     |  add RD, BASE, RD
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  ld TMP0, 0(RD)
     |  ins_next1
     |  sd TMP0, 0(RA)
@@ -2511,16 +2545,16 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_NOT:
     |  // RA = dst*8, RD = src*8
     |  add RD, BASE, RD
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  ld TMP0, 0(RD)
-    |  li TMP1, LJ_TTRUE
+    |   li TMP1, LJ_TTRUE
     |  ins_next1
     |  gettp TMP0, TMP0
     |  sltu TMP0, TMP1, TMP0
     |  addiw TMP0, TMP0, 1
     |  slli TMP0, TMP0, 47
     |  not TMP0, TMP0
-    |  sd TMP0, 0(RA)
+    |   sd TMP0, 0(RA)
     |  ins_next2
     break;
   case BC_UNM:
@@ -2528,7 +2562,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  add RB, BASE, RD
     |  add RA, BASE, RA
     |  ld TMP0, 0(RB)
-    |  addu16i.d TMP1, r0, 0x8000
+    |  lui TMP1, 0x80000
     |  gettp CARG3, TMP0
     |  bne CARG3, TISNUM, >1
     |  negw TMP0, TMP0
@@ -2538,23 +2572,23 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  j >2
     |1:
     |  sltiu TMP3, CARG3, LJ_TISNUM
-    |  slli TMP1, TMP1, 32
+    |   slli TMP1, TMP1, 32
     |  beqz TMP3, ->vmeta_unm
-    |  xor TMP0, TMP0, TMP1     // sign => ~sign
+    |   xor TMP0, TMP0, TMP1     // sign => ~sign
     |2:
-    |  sd TMP0, 0(RA)
+    |   sd TMP0, 0(RA)
     |  ins_next
     break;
   case BC_LEN:
     |  // RA = dst*8, RD = src*8
     |  add CARG2, BASE, RD
     |  ld TMP0, 0(CARG2)
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  gettp TMP1, TMP0
     |  addi TMP2, TMP1, -LJ_TSTR
-    |  cleartp STR:CARG1, TMP0
+    |   cleartp STR:CARG1, TMP0
     |  bnez TMP2, >2
-    |  lw CARG1, STR:CARG1->len
+    |   lw CARG1, STR:CARG1->len
     |1:
     |  settp CARG1, TISNUM
     |  sd CARG1, 0(RA)
@@ -2586,7 +2620,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  fdiv.d FARG1, b, c
     |  jal ->vm_floor		// floor(b/c)
     |  fmul.d a, FRET1, c
-    |  fsub a, b, a		// b - floor(b/c)*c
+    |  fsub.d a, b, a		// b - floor(b/c)*c
     |.endmacro
     |
     |.macro ins_arithpre
@@ -2660,14 +2694,15 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  and TMP1, TMP1, TMP2
     |  add RA, BASE, RA
     |  bltz TMP1, ->vmeta_arith
-    |.elif "intins" == "mulw.d.w"
-    |  mul.w CRET1, CARG3, CARG4
-    |  mulh.w TMP2, CARG3, CARG4
-    |  sraiw TMP1, CRET1, 31		// 63-32bit not all 0 or 1: overflow.
+    |.elif "intins" == "mulw"
+    |  mulw CRET1, CARG3, CARG4
+    |  mul TMP2, CARG3, CARG4
+    |  sraiw TMP1, CRET1, 31
+    |  srai TMP2, TMP2, 32
     |  add RA, BASE, RA
-    |  bne TMP1, TMP2, ->vmeta_arith
+    |  bne TMP1, TMP2, ->vmeta_arith		// 63-32bit not all 0 or 1: overflow.
     |.endif
-    |  zext.w CRET1, CRET1
+    |. zext.w CRET1, CRET1
     |  settp CRET1, TISNUM
     |  sd CRET1, 0(RA)
     |  ins_next
@@ -2691,7 +2726,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  add RA, BASE, RA
     |  beqz CARG2, ->vmeta_arith
     |  jal extern lj_vm_modi
-    |  zext.w CRET1, CRET1
+    |. zext.w CRET1, CRET1
     |  settp CRET1, TISNUM
     |  sd CRET1, 0(RA)
     |  ins_next
@@ -2700,13 +2735,13 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |.endmacro
     
   case BC_ADDVN: case BC_ADDNV: case BC_ADDVV:
-    |  ins_arithdn addw, fadd
+    |  ins_arithdn addw, fadd.d
     break;
   case BC_SUBVN: case BC_SUBNV: case BC_SUBVV:
-    |  ins_arithdn subw, fsub
+    |  ins_arithdn subw, fsub.d
     break;
   case BC_MULVN: case BC_MULNV: case BC_MULVV:
-    |  ins_arithdn mulw.d.w, fmul.d
+    |  ins_arithdn mulw, fmul.d
     break;
   case BC_DIVVN: case BC_DIVNV: case BC_DIVVV:
     |  ins_arithdiv fdiv.d
@@ -2717,13 +2752,13 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_POW:
     |  ins_arithpre
     |  ld CARG1, 0(RB)
-    |  ld CARG2, 0(RC)
+    |   ld CARG2, 0(RC)
     |  gettp TMP0, CARG1
-    |  gettp TMP1, CARG2
+    |   gettp TMP1, CARG2
     |  sltiu TMP0, TMP0, LJ_TISNUM
-    |  sltiu TMP1, TMP1, LJ_TISNUM
+    |   sltiu TMP1, TMP1, LJ_TISNUM
     |  and TMP0, TMP0, TMP1
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  beqz TMP0, ->vmeta_arith
     |  fld FARG1, 0(RB)
     |  fld FARG2, 0(RC)
@@ -2736,22 +2771,22 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_CAT:
     |  // RA = dst*8, RB = src_start*8, RC = src_end*8
     |  decode_RB RB, INS
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  sub CARG3, RC, RB
-    |  sd BASE, L->base
+    |   sd BASE, L->base
     |  add CARG2, BASE, RC
     |  mv MULTRES, RB
     |->BC_CAT_Z:
     |  srliw CARG3, CARG3, 3
-    |  sd PC, SAVE_PC(sp)
-    |  mv CARG1, L
+    |   sd PC, SAVE_PC(sp)
+    |   mv CARG1, L
     |  jal extern lj_meta_cat		// (lua_State *L, TValue *top, int left)
     |  // Returns NULL (finished) or TValue * (metamethod).
-    |  ld BASE, L->base
+    |   ld BASE, L->base
     |  bnez CRET1, ->vmeta_binop
     |  add RB, BASE, MULTRES
     |  ld TMP0, 0(RB)
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  sd TMP0, 0(RA)
     |  ins_next
     break;
@@ -2761,10 +2796,10 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_KSTR:
     |  // RA = dst*8, RD = str_const*8 (~)
     |  sub TMP1, KBASE, RD
-    |  .liw TMP2, LJ_TSTR
+    |.  liw TMP2, LJ_TSTR
     |  ld TMP0, -8(TMP1)		// KBASE-8-str_const*8
     |  add RA, BASE, RA
-    |  settp TMP0, TMP2
+    |   settp TMP0, TMP2
     |  sd TMP0, 0(RA)
     |  ins_next
     break;
@@ -2772,39 +2807,42 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     break;
   case BC_KSHORT:
     |  // RA = dst*8, RD = int16_literal*8
-    |  sraiw RD, INS, 16
+    |   sraiw RD, INS, 16
     |  add RA, BASE, RA
-    |  zext.w RD, RD
-    |  settp RD, TISNUM
-    |  sd RD, 0(RA)
-    |  ins_next
+    |.  zext.w RD, RD
+    |  ins_next1
+    |   settp RD, TISNUM
+    |   sd RD, 0(RA)
+    |  ins_next2
     break;
   case BC_KNUM:
     |  // RA = dst*8, RD = num_const*8
     |  add RD, KBASE, RD
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  ld TMP0, 0(RD)
+    |  ins_next1
     |  sd TMP0, 0(RA)
-    |  ins_next
+    |  ins_next2
     break;
   case BC_KPRI:
     |  // RA = dst*8, RD = primitive_type*8 (~)
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  slli TMP0, RD, 44	// 44+3
     |  not TMP0, TMP0
-    |  sd TMP0, 0(RA)
-    |  ins_next
+    |  ins_next1
+    |   sd TMP0, 0(RA)
+    |  ins_next2
     break;
   case BC_KNIL:
     |  // RA = base*8, RD = end*8
     |  add RA, BASE, RA
     |  sd TISNIL, 0(RA)
-    |  addi RA, RA, 8
+    |   addi RA, RA, 8
     |  add RD, BASE, RD
     |1:
     |  sd TISNIL, 0(RA)
     |  slt TMP0, RA, RD
-    |  addi RA, RA, 8
+    |   addi RA, RA, 8
     |  bnez TMP0, <1
     |  ins_next
     break;
@@ -2814,100 +2852,100 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_UGET:
     |  // RA = dst*8, RD = uvnum*8
     |  ld LFUNC:TMP0, FRAME_FUNC(BASE)
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  cleartp LFUNC:TMP0
     |  add RD, RD, LFUNC:TMP0
     |  ld UPVAL:TMP0, LFUNC:RD->uvptr
+    |  ins_next1
     |  ld TMP1, UPVAL:TMP0->v
     |  ld TMP2, 0(TMP1)
-    |  ins_next1
-    |  sd TMP2, 0(RA)
+    |   sd TMP2, 0(RA)
     |  ins_next2
     break;
   case BC_USETV:
     |  // RA = uvnum*8, RD = src*8
     |  ld LFUNC:TMP0, FRAME_FUNC(BASE)
-    |  add RD, BASE, RD
+    |   add RD, BASE, RD
     |  cleartp LFUNC:TMP0
     |  add RA, RA, LFUNC:TMP0
     |  ld UPVAL:TMP0, LFUNC:RA->uvptr
-    |  ld CRET1, 0(RD)
+    |   ld CRET1, 0(RD)
     |  lbu TMP3, UPVAL:TMP0->marked
-    |  ld CARG2, UPVAL:TMP0->v
+    |   ld CARG2, UPVAL:TMP0->v
     |  andi TMP3, TMP3, LJ_GC_BLACK	// isblack(uv)
     |  lbu TMP0, UPVAL:TMP0->closed
-    |  gettp TMP2, CRET1
-    |  sd CRET1, 0(CARG2)
+    |   gettp TMP2, CRET1
+    |   sd CRET1, 0(CARG2)
     |  or TMP3, TMP3, TMP0
     |  li TMP0, LJ_GC_BLACK|1
-    |  addi TMP2, TMP2, -(LJ_TNUMX+1)
+    |   addi TMP2, TMP2, -(LJ_TNUMX+1)
     |  beq TMP3, TMP0, >2			// Upvalue is closed and black?
     |1:
     |  ins_next
     |
     |2:  // Check if new value is collectable.
     |  sltiu TMP0, TMP2, LJ_TISGCV - (LJ_TNUMX+1)
-    |  cleartp GCOBJ:CRET1, CRET1
+    |   cleartp GCOBJ:CRET1, CRET1
     |  beqz TMP0, <1			// tvisgcv(v)
     |  lbu TMP3, GCOBJ:CRET1->gch.marked
     |  andi TMP3, TMP3, LJ_GC_WHITES	// iswhite(v)
     |  beqz TMP3, <1
     |  // Crossed a write barrier. Move the barrier forward.
-    |  .addxi CARG1, DISPATCH, GG_DISP2G
+    |.  addxi CARG1, DISPATCH, GG_DISP2G
     |  jal extern lj_gc_barrieruv	// (global_State *g, TValue *tv)
     |  j <1
     break;
   case BC_USETS:
     |  // RA = uvnum*8, RD = str_const*8 (~)
     |  ld LFUNC:TMP0, FRAME_FUNC(BASE)
-    |  sub TMP1, KBASE, RD
+    |   sub TMP1, KBASE, RD
     |  cleartp LFUNC:TMP0
     |  add RA, RA, LFUNC:TMP0
     |  ld UPVAL:TMP0, LFUNC:RA->uvptr
-    |  ld STR:TMP1, -8(TMP1)		// KBASE-8-str_const*8
+    |   ld STR:TMP1, -8(TMP1)		// KBASE-8-str_const*8
     |  lbu TMP2, UPVAL:TMP0->marked
-    |  ld CARG2, UPVAL:TMP0->v
-    |  lbu TMP3, STR:TMP1->marked
+    |   ld CARG2, UPVAL:TMP0->v
+    |   lbu TMP3, STR:TMP1->marked
     |  andi TMP4, TMP2, LJ_GC_BLACK	// isblack(uv)
-    |  lbu TMP2, UPVAL:TMP0->closed
-    |  li TMP0, LJ_TSTR
-    |  settp TMP1, TMP0
+    |   lbu TMP2, UPVAL:TMP0->closed
+    |   li TMP0, LJ_TSTR
+    |   settp TMP1, TMP0
     |  sd TMP1, 0(CARG2)
-    |  bnez TMP4, >2
+    |   bnez TMP4, >2
     |1:
     |  ins_next
     |
     |2:  // Check if string is white and ensure upvalue is closed.
     |  beqz TMP2, <1
-    |  andi TMP0, TMP3, LJ_GC_WHITES     // iswhite(str)
+    |   andi TMP0, TMP3, LJ_GC_WHITES     // iswhite(str)
     |  beqz TMP0, <1
     |  // Crossed a write barrier. Move the barrier forward.
-    |  .addxi CARG1, DISPATCH, GG_DISP2G
+    |.  addxi CARG1, DISPATCH, GG_DISP2G
     |  jal extern lj_gc_barrieruv	// (global_State *g, TValue *tv)
     |  j <1
     break;
   case BC_USETN:
     |  // RA = uvnum*8, RD = num_const*8
     |  ld LFUNC:TMP0, FRAME_FUNC(BASE)
-    |  add RD, KBASE, RD
+    |   add RD, KBASE, RD
     |  cleartp LFUNC:TMP0
     |  add TMP0, RA, LFUNC:TMP0
     |  ld UPVAL:TMP0, LFUNC:TMP0->uvptr
-    |  ld TMP1, 0(RD)
+    |   ld TMP1, 0(RD)
     |  ld TMP0, UPVAL:TMP0->v
-    |  sd TMP1, 0(TMP0)
+    |   sd TMP1, 0(TMP0)
     |  ins_next
     break;
   case BC_USETP:
     |  // RA = uvnum*8, RD = primitive_type*8 (~)
     |  ld LFUNC:TMP0, FRAME_FUNC(BASE)
-    |  slli TMP2, RD, 44
+    |   slli TMP2, RD, 44
     |  cleartp LFUNC:TMP0
     |  add TMP0, RA, LFUNC:TMP0
-    |  not TMP2, TMP2
+    |   not TMP2, TMP2
     |  ld UPVAL:TMP0, LFUNC:TMP0->uvptr
     |  ld TMP1, UPVAL:TMP0->v
-    |  sd TMP2, 0(TMP1)
+    |   sd TMP2, 0(TMP1)
     |  ins_next
     break;
 
@@ -2915,10 +2953,10 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = level*8, RD = target
     |  ld TMP2, L->openupval
     |  branch_RD			// Do this first since RD is not saved.
-    |  sd BASE, L->base
-    |  mv CARG1, L
+    |   sd BASE, L->base
+    |   mv CARG1, L
     |  beqz TMP2, >1
-    |  add CARG2, BASE, RA
+    |   add CARG2, BASE, RA
     |  jal extern lj_func_closeuv	// (lua_State *L, TValue *level)
     |  ld BASE, L->base
     |1:
@@ -2929,19 +2967,19 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = dst*8, RD = proto_const*8 (~) (holding function prototype)
     |  sub TMP1, KBASE, RD
     |  ld CARG3, FRAME_FUNC(BASE)
-    |  ld CARG2, -8(TMP1)		// KBASE-8-tab_const*8
-    |  sd BASE, L->base
-    |  sd PC, SAVE_PC(sp)
+    |   ld CARG2, -8(TMP1)		// KBASE-8-tab_const*8
+    |    sd BASE, L->base
+    |    sd PC, SAVE_PC(sp)
     |  cleartp CARG3
-    |  mv CARG1, L
+    |   mv CARG1, L
     |  // (lua_State *L, GCproto *pt, GCfuncL *parent)
     |  jal extern lj_func_newL_gc
     |  // Returns GCfuncL *.
-    |  li TMP0, LJ_TFUNC
+    |   li TMP0, LJ_TFUNC
     |  ld BASE, L->base
-    |  settp CRET1, TMP0
+    |   settp CRET1, TMP0
     |  add RA, BASE, RA
-    |  sd CRET1, 0(RA)
+    |   sd CRET1, 0(RA)
     |  ins_next
     break;
 
@@ -2950,11 +2988,11 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_TNEW:
   case BC_TDUP:
     |  // RA = dst*8, RD = (hbits|asize)*8 | tab_const*8 (~)
-    |  .LDXD TMP0, DISPATCH, DISPATCH_GL(gc.total)
-    |  .LDXD TMP1, DISPATCH, DISPATCH_GL(gc.threshold)
-    |  sd BASE, L->base
+    |. lxd TMP0, DISPATCH, DISPATCH_GL(gc.total)
+    |. lxd TMP1, DISPATCH, DISPATCH_GL(gc.threshold)
+    |   sd BASE, L->base
     |  sltu TMP2, TMP0, TMP1
-    |  sd PC, SAVE_PC(sp)
+    |   sd PC, SAVE_PC(sp)
     |  beqz TMP2, >5
     |1:
     if (op == BC_TNEW) {
@@ -2962,33 +3000,36 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  andi CARG2, CARG2, 0x7ff
       |  ori TMP0, x0, 0x801
       |  addiw TMP2, CARG2, -0x7ff
-      |  srliw CARG3, RD, 14
-      |  masknez TMP0, TMP0, TMP2
-      |  maskeqz CARG2, CARG2, TMP2
+      |   srliw CARG3, RD, 14
+      |  seqz TMP4, TMP2
+      |  neg TMP4, TMP4
+      |  not TMP3, TMP4
+      |  and TMP0, TMP0, TMP4
+      |  and CARG2, CARG2, TMP3
       |  or CARG2, CARG2, TMP0
       |  // (lua_State *L, int32_t asize, uint32_t hbits)
-      |  mv CARG1, L
+      |   mv CARG1, L
       |  jal extern lj_tab_new
       |  // Returns Table *.
     } else {
       |  sub TMP1, KBASE, RD
       |  mv CARG1, L
-      |  ld CARG2, -8(TMP1)            // KBASE-8-str_const*8
+      |   ld CARG2, -8(TMP1)            // KBASE-8-str_const*8
       |  jal extern lj_tab_dup		// (lua_State *L, Table *kt)
       |  // Returns Table *.
     }
-    |  li TMP0, LJ_TTAB
+    |   li TMP0, LJ_TTAB
     |  ld BASE, L->base
     |  ins_next1
-    |  settp CRET1, TMP0
+    |   settp CRET1, TMP0
     |  add RA, BASE, RA
-    |  sd CRET1, 0(RA)
+    |   sd CRET1, 0(RA)
     |  ins_next2
     |5:
     |  mv MULTRES, RD
-    |  mv CARG1, L
+    |   mv CARG1, L
     |  jal extern lj_gc_step_fixtop	// (lua_State *L)
-    |  mv RD, MULTRES
+    |   mv RD, MULTRES
     |  j <1
     break;
 
@@ -2997,8 +3038,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_GSET:
     |  // RA = src*8, RD = str_const*8 (~)
     |  ld LFUNC:TMP0, FRAME_FUNC(BASE)
-    |  sub TMP1, KBASE, RD
-    |  ld STR:RC, -8(TMP1)	// KBASE-8-str_const*8
+    |   sub TMP1, KBASE, RD
+    |   ld STR:RC, -8(TMP1)	// KBASE-8-str_const*8
     |  cleartp LFUNC:TMP0
     |  ld TAB:RB, LFUNC:TMP0->env
     |  add RA, BASE, RA
@@ -3012,26 +3053,26 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_TGETV:
     |  // RA = dst*8, RB = table*8, RC = key*8
     |  decode_RB RB, INS
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
-    |  add CARG3, BASE, RC
+    |   add CARG3, BASE, RC
     |  ld TAB:RB, 0(CARG2)
-    |  ld TMP2, 0(CARG3)
-    |  add RA, BASE, RA
+    |   ld TMP2, 0(CARG3)
+    |   add RA, BASE, RA
     |  checktab TAB:RB, ->vmeta_tgetv
-    |  gettp TMP3, TMP2
-    |  lw TMP0, TAB:RB->asize
+    |   gettp TMP3, TMP2
+    |   lw TMP0, TAB:RB->asize
     |  bne TMP3, TISNUM, >5		// Integer key?
     |  sext.w TMP2, TMP2
-    |  ld TMP1, TAB:RB->array
+    |   ld TMP1, TAB:RB->array
     |  sltu TMP3, TMP2, TMP0		//array part (keys = [0, asize-1])
-    |  slliw TMP2, TMP2, 3
+    |   slliw TMP2, TMP2, 3
     |  beqz TMP3, ->vmeta_tgetv		// Integer key and in array part?
-    |  add TMP2, TMP1, TMP2
-    |  ld CRET1, 0(TMP2)
+    |   add TMP2, TMP1, TMP2
+    |   ld CRET1, 0(TMP2)
     |  beq CRET1, TISNIL, >2
     |1:
-    |  sd CRET1, 0(RA)
+    |   sd CRET1, 0(RA)
     |  ins_next
     |
     |2:  // Check for __index if table value is nil.
@@ -3044,50 +3085,50 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |5:
     |  li TMP0, LJ_TSTR
-    |  cleartp RC, TMP2
+    |   cleartp RC, TMP2
     |  bne TMP3, TMP0, ->vmeta_tgetv	// String key?
     |  j ->BC_TGETS_Z
     break;
   case BC_TGETS:
     |  // RA = dst*8, RB = table*8, RC = str_const*8 (~)
     |  decode_RB RB, INS
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
-    |  sub CARG3, KBASE, RC
+    |   sub CARG3, KBASE, RC
     |  ld TAB:RB, 0(CARG2)
     |  add RA, BASE, RA
-    |  ld STR:RC, -8(CARG3)		// KBASE-8-str_const*8
+    |   ld STR:RC, -8(CARG3)		// KBASE-8-str_const*8
     |  checktab TAB:RB, ->vmeta_tgets1
     |->BC_TGETS_Z:
     |  // TAB:RB = GCtab *, STR:RC = GCstr *, RA = dst*8
     |  lw TMP0, TAB:RB->hmask
-    |  lw TMP1, STR:RC->sid
-    |  ld NODE:TMP2, TAB:RB->node
+    |   lw TMP1, STR:RC->sid
+    |    ld NODE:TMP2, TAB:RB->node
     |  and TMP1, TMP1, TMP0		// idx = str->sid & tab->hmask
     |  slliw TMP0, TMP1, 5
     |  slliw TMP1, TMP1, 3
     |  subw TMP1, TMP0, TMP1
-    |  li TMP3, LJ_TSTR
+    |   li TMP3, LJ_TSTR
     |  add NODE:TMP2, NODE:TMP2, TMP1	// node = tab->node + (idx*32-idx*8)
-    |  settp STR:RC, TMP3		// Tagged key to look for.
+    |   settp STR:RC, TMP3		// Tagged key to look for.
     |1:
     |  ld CARG1, NODE:TMP2->key
-    |  ld CARG2, NODE:TMP2->val
-    |  ld NODE:TMP1, NODE:TMP2->next
-    |  ld TAB:TMP3, TAB:RB->metatable
+    |   ld CARG2, NODE:TMP2->val
+    |    ld NODE:TMP1, NODE:TMP2->next
+    |   ld TAB:TMP3, TAB:RB->metatable
     |  bne CARG1, RC, >4
     |  beq CARG2, TISNIL, >5		// Key found, but nil value?
     |3:
-    |  sd CARG2, 0(RA)
+    |   sd CARG2, 0(RA)
     |  ins_next
     |
     |4:  // Follow hash chain.
-    |  mv NODE:TMP2, NODE:TMP1
+    |   mv NODE:TMP2, NODE:TMP1
     |  bnez NODE:TMP1, <1
     |  // End of hash chain: key not found, nil result.
     |
     |5:  // Check for __index if table value is nil.
-    |  mv CARG2, TISNIL
+    |   mv CARG2, TISNIL
     |  beqz TAB:TMP3, <3		// No metatable: done.
     |  lbu TMP0, TAB:TMP3->nomm
     |  andi TMP0, TMP0, 1<<MM_index
@@ -3098,20 +3139,20 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = dst*8, RB = table*8, RC = index*8
     |  decode_RB RB, INS
     |  add CARG2, BASE, RB
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  ld TAB:RB, 0(CARG2)
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  srliw TMP0, RC, 3
     |  checktab TAB:RB, ->vmeta_tgetb
     |  lw TMP1, TAB:RB->asize
-    |  ld TMP2, TAB:RB->array
+    |   ld TMP2, TAB:RB->array
     |  sltu TMP1, TMP0, TMP1
-    |  add RC, TMP2, RC
+    |   add RC, TMP2, RC
     |  beqz TMP1, ->vmeta_tgetb
-    |  ld CRET1, 0(RC)
+    |   ld CRET1, 0(RC)
     |  beq CRET1, TISNIL, >5
     |1:
-    |  sd CRET1, 0(RA)
+    |   sd CRET1, 0(RA)
     |  ins_next
     |
     |5:  // Check for __index if table value is nil.
@@ -3125,51 +3166,51 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_TGETR:
     |  // RA = dst*8, RB = table*8, RC = key*8
     |  decode_RB RB, INS
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  add RB, BASE, RB
-    |  add RC, BASE, RC
+    |   add RC, BASE, RC
     |  ld TAB:CARG1, 0(RB)
-    |  lw CARG2, 0(RC)
-    |  add RA, BASE, RA
+    |   lw CARG2, 0(RC)
+    |    add RA, BASE, RA
     |  cleartp TAB:CARG1
     |  lw TMP0, TAB:CARG1->asize
-    |  ld TMP1, TAB:CARG1->array
+    |   ld TMP1, TAB:CARG1->array
     |  sltu TMP0, CARG2, TMP0
-    |  slliw TMP2, CARG2, 3
-    |  add TMP3, TMP1, TMP2
+    |   slliw TMP2, CARG2, 3
+    |   add TMP3, TMP1, TMP2
     |  beqz TMP0, ->vmeta_tgetr		// In array part?
-    |  ld TMP1, 0(TMP3)
+    |   ld TMP1, 0(TMP3)
     |->BC_TGETR_Z:
     |  ins_next1
-    |  sd TMP1, 0(RA)
+    |   sd TMP1, 0(RA)
     |  ins_next2
     break;
 
   case BC_TSETV:
     |  // RA = src*8, RB = table*8, RC = key*8
     |  decode_RB RB, INS
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
-    |  add CARG3, BASE, RC
+    |   add CARG3, BASE, RC
     |  ld TAB:RB, 0(CARG2)
-    |  ld TMP2, 0(CARG3)
+    |   ld TMP2, 0(CARG3)
     |  add RA, BASE, RA
     |  checktab TAB:RB, ->vmeta_tsetv
-    |  sext.w RC, TMP2
+    |   sext.w RC, TMP2
     |  checkint TMP2, >5
     |  lw TMP0, TAB:RB->asize
-    |  ld TMP1, TAB:RB->array
+    |   ld TMP1, TAB:RB->array
     |  sltu TMP0, RC, TMP0
-    |  slliw TMP2, RC, 3
+    |   slliw TMP2, RC, 3
     |  beqz TMP0, ->vmeta_tsetv		// Integer key and in array part?
     |  add TMP1, TMP1, TMP2
-    |  lbu TMP3, TAB:RB->marked
+    |   lbu TMP3, TAB:RB->marked
     |  ld TMP0, 0(TMP1)
-    |  ld CRET1, 0(RA)
+    |   ld CRET1, 0(RA)
     |  beq TMP0, TISNIL, >3
     |1:
-    |  andi TMP2, TMP3, LJ_GC_BLACK	// isblack(table)
-    |  sd CRET1, 0(TMP1)
+    |   andi TMP2, TMP3, LJ_GC_BLACK	// isblack(table)
+    |   sd CRET1, 0(TMP1)
     |  bnez TMP2, >7
     |2:
     |  ins_next
@@ -3194,39 +3235,39 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_TSETS:
     |  // RA = src*8, RB = table*8, RC = str_const*8 (~)
     |  decode_RB RB, INS
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
-    |  sub CARG3, KBASE, RC
-    |  ld TAB:RB, 0(CARG2)
-    |  ld RC, -8(CARG3)		// KBASE-8-str_const*8
+    |   sub CARG3, KBASE, RC
+    |    ld TAB:RB, 0(CARG2)
+    |   ld RC, -8(CARG3)		// KBASE-8-str_const*8
     |  add RA, BASE, RA
-    |  cleartp STR:RC
+    |   cleartp STR:RC
     |  checktab TAB:RB, ->vmeta_tsets1
     |->BC_TSETS_Z:
     |  // TAB:RB = GCtab *, STR:RC = GCstr *, RA = BASE+src*8
     |  lw TMP0, TAB:RB->hmask
-    |  lw TMP1, STR:RC->sid
-    |  ld NODE:TMP2, TAB:RB->node
-    |  sb r0, TAB:RB->nomm		// Clear metamethod cache.
+    |   lw TMP1, STR:RC->sid
+    |    ld NODE:TMP2, TAB:RB->node
+    |   sb r0, TAB:RB->nomm		// Clear metamethod cache.
     |  and TMP1, TMP1, TMP0		// idx = str->sid & tab->hmask
     |  slliw TMP0, TMP1, 5
     |  slliw TMP1, TMP1, 3
     |  subw TMP1, TMP0, TMP1
-    |  li TMP3, LJ_TSTR
+    |   li TMP3, LJ_TSTR
     |  add NODE:TMP2, NODE:TMP2, TMP1	// node = tab->node + (idx*32-idx*8)
-    |  settp STR:RC, TMP3		// Tagged key to look for.
+    |   settp STR:RC, TMP3		// Tagged key to look for.
     |  fld FTMP0, 0(RA)
     |1:
     |  ld TMP0, NODE:TMP2->key
-    |  ld CARG2, NODE:TMP2->val
-    |  ld NODE:TMP1, NODE:TMP2->next
-    |  lbu TMP3, TAB:RB->marked
+    |   ld CARG2, NODE:TMP2->val
+    |    ld NODE:TMP1, NODE:TMP2->next
+    |     lbu TMP3, TAB:RB->marked
     |  bne TMP0, RC, >5
-    |  ld TAB:TMP0, TAB:RB->metatable
-    |  beq CARG2, TISNIL, >4		// Key found, but nil value?
+    |    ld TAB:TMP0, TAB:RB->metatable
+    |   beq CARG2, TISNIL, >4		// Key found, but nil value?
     |2:
     |  andi TMP3, TMP3, LJ_GC_BLACK	// isblack(table)
-    |  fsd FTMP0, NODE:TMP2->val
+    |   fsd FTMP0, NODE:TMP2->val
     |  bnez TMP3, >7
     |3:
     |  ins_next
@@ -3239,27 +3280,27 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  j ->vmeta_tsets
     |
     |5:  // Follow hash chain.
-    |  mv NODE:TMP2, NODE:TMP1
+    |   mv NODE:TMP2, NODE:TMP1
     |  bnez NODE:TMP1, <1
     |  // End of hash chain: key not found, add a new one
     |
     |  // But check for __newindex first.
     |  ld TAB:TMP2, TAB:RB->metatable
-    |  .addxi CARG3, DISPATCH, DISPATCH_GL(tmptv)
+    |.  addxi CARG3, DISPATCH, DISPATCH_GL(tmptv)
     |  beqz TAB:TMP2, >6		// No metatable: continue.
     |  lbu TMP0, TAB:TMP2->nomm
     |  andi TMP0, TMP0, 1<<MM_newindex
     |  beqz TMP0, ->vmeta_tsets		// 'no __newindex' flag NOT set: check.
     |6:
     |  sd RC, 0(CARG3)
-    |  sd BASE, L->base
+    |   sd BASE, L->base
     |  mv CARG2, TAB:RB
-    |  sd PC, SAVE_PC(sp)
-    |  mv CARG1, L
+    |   sd PC, SAVE_PC(sp)
+    |   mv CARG1, L
     |  jal extern lj_tab_newkey	// (lua_State *L, GCtab *t, TValue *k
     |  // Returns TValue *.
     |  ld BASE, L->base
-    |  fsd FTMP0, 0(CRET1)
+    |   fsd FTMP0, 0(CRET1)
     |  j <3				// No 2nd write barrier needed.
     |
     |7:  // Possible table write barrier for the value. Skip valiswhite check.
@@ -3268,24 +3309,24 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_TSETB:
     |  // RA = src*8, RB = table*8, RC = index*8
     |  decode_RB RB, INS
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  ld TAB:RB, 0(CARG2)
     |  srliw TMP0, RC, 3
     |  checktab RB, ->vmeta_tsetb
     |  lw TMP1, TAB:RB->asize
-    |  ld TMP2, TAB:RB->array
+    |   ld TMP2, TAB:RB->array
     |  sltu TMP1, TMP0, TMP1
-    |  add RC, TMP2, RC
+    |   add RC, TMP2, RC
     |  beqz TMP1, ->vmeta_tsetb
     |  ld TMP1, 0(RC)
-    |  lbu TMP3, TAB:RB->marked
+    |   lbu TMP3, TAB:RB->marked
     |  beq TMP1, TISNIL, >5
     |1:
-    |  ld CRET1, 0(RA)
+    |   ld CRET1, 0(RA)
     |  andi TMP1, TMP3, LJ_GC_BLACK	// isblack(table)
-    |  sd CRET1, 0(RC)
+    |    sd CRET1, 0(RC)
     |  bnez TMP1, >7
     |2:
     |  ins_next
@@ -3304,22 +3345,22 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_TSETR:
     |  // RA = dst*8, RB = table*8, RC = key*8
     |  decode_RB RB, INS
-    |  decode_RDtoRC8 RC, RD
+    |   decode_RDtoRC8 RC, RD
     |  add CARG1, BASE, RB
-    |  add CARG3, BASE, RC
+    |   add CARG3, BASE, RC
     |  ld TAB:CARG2, 0(CARG1)
-    |  lw CARG3, 0(CARG3)
+    |   lw CARG3, 0(CARG3)
     |  cleartp TAB:CARG2
     |  lbu TMP3, TAB:CARG2->marked
-    |  lw TMP0, TAB:CARG2->asize
-    |  ld TMP1, TAB:CARG2->array
+    |   lw TMP0, TAB:CARG2->asize
+    |    ld TMP1, TAB:CARG2->array
     |  andi TMP2, TMP3, LJ_GC_BLACK	// isblack(table)
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  bnez TMP2, >7
     |2:
     |  sltu TMP0, CARG3, TMP0
-    |  slliw TMP2, CARG3, 3
-    |  add CRET1, TMP1, TMP2
+    |   slliw TMP2, CARG3, 3
+    |   add CRET1, TMP1, TMP2
     |  beqz TMP0, ->vmeta_tsetr		// In array part?
     |->BC_TSETR_Z:
     |  ld TMP1, 0(RA)
@@ -3335,43 +3376,43 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = base*8 (table at base-1), RD = num_const*8 (start index)
     |  add RA, BASE, RA
     |1:
-    |  add TMP3, KBASE, RD
+    |   add TMP3, KBASE, RD
     |  ld TAB:CARG2, -8(RA)		// Guaranteed to be a table.
-    |  addiw TMP0, MULTRES, -8
-    |  lw TMP3, 0(TMP3)		// Integer constant is in lo-word.
-    |  srliw CARG3, TMP0, 3
-    |  beqz TMP0, >4			// Nothing to copy?
+    |    addiw TMP0, MULTRES, -8
+    |   lw TMP3, 0(TMP3)		// Integer constant is in lo-word.
+    |   srliw CARG3, TMP0, 3
+    |    beqz TMP0, >4			// Nothing to copy?
     |  cleartp TAB:CARG2
     |  addw CARG3, CARG3, TMP3
     |  lw TMP2, TAB:CARG2->asize
-    |  slliw TMP1, TMP3, 3
-    |  lbu TMP3, TAB:CARG2->marked
-    |  ld CARG1, TAB:CARG2->array
+    |   slliw TMP1, TMP3, 3
+    |    lbu TMP3, TAB:CARG2->marked
+    |   ld CARG1, TAB:CARG2->array
     |  sltu TMP4, TMP2, CARG3
-    |  add TMP2, RA, TMP0
+    |   add TMP2, RA, TMP0
     |  bnez TMP4, >5
-    |  add TMP1, TMP1, CARG1
+    |   add TMP1, TMP1, CARG1
     |  andi TMP0, TMP3, LJ_GC_BLACK	// isblack(table)
     |3:  // Copy result slots to table.
-    |  ld CRET1, 0(RA)
-    |  addi RA, RA, 8
+    |   ld CRET1, 0(RA)
+    |    addi RA, RA, 8
     |  sltu TMP4, RA, TMP2
-    |  sd CRET1, 0(TMP1)
-    |  addi TMP1, TMP1, 8
+    |   sd CRET1, 0(TMP1)
+    |    addi TMP1, TMP1, 8
     |  bnez TMP4, <3
     |  bnez TMP0, >7
     |4:
     |  ins_next
     |
     |5:  // Need to resize array part.
-    |  sd BASE, L->base
-    |  sd PC, SAVE_PC(sp)
+    |   sd BASE, L->base
+    |   sd PC, SAVE_PC(sp)
     |  mv BASE, RD
-    |  mv CARG1, L
+    |   mv CARG1, L
     |  jal extern lj_tab_reasize	// (lua_State *L, GCtab *t, int nasize)
     |  // Must not reallocate the stack.
     |  mv RD, BASE
-    |  ld BASE, L->base        // Reload BASE for lack of a saved register.
+    |   ld BASE, L->base        // Reload BASE for lack of a saved register.
     |  j <1
     |
     |7:  // Possible table write barrier for any value. Skip valiswhite check.
@@ -3383,7 +3424,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_CALLM:
     |  // RA = base*8, (RB = (nresults+1)*8,) RC = extra_nargs*8
     |  decode_RDtoRC8 NARGS8:RC, RD
-    |  addw NARGS8:RC, NARGS8:RC, MULTRES
+    |   addw NARGS8:RC, NARGS8:RC, MULTRES
     |  j ->BC_CALL_Z
     break;
   case BC_CALL:
@@ -3392,8 +3433,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |->BC_CALL_Z:
     |  mv TMP2, BASE
     |  add BASE, BASE, RA
-    |  ld LFUNC:RB, 0(BASE)
-    |  addi BASE, BASE, 16
+    |   ld LFUNC:RB, 0(BASE)
+    |   addi BASE, BASE, 16
     |  addiw NARGS8:RC, NARGS8:RC, -8
     |  checkfunc RB, ->vmeta_call
     |  ins_call
@@ -3409,29 +3450,29 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |->BC_CALLT_Z1:
     |  add RA, BASE, RA
     |  ld LFUNC:RB, 0(RA)
-    |  mv NARGS8:RC, RD
-    |  ld TMP1, FRAME_PC(BASE)
-    |  addi RA, RA, 16
+    |   mv NARGS8:RC, RD
+    |    ld TMP1, FRAME_PC(BASE)
+    |   addi RA, RA, 16
     |  addiw NARGS8:RC, NARGS8:RC, -8
     |  checktp CARG3, LFUNC:RB, -LJ_TFUNC, ->vmeta_callt
     |->BC_CALLT_Z:
     |  andi TMP0, TMP1, FRAME_TYPE	// Caveat: preserve TMP0 until the 'or'.
-    |  lbu TMP3, LFUNC:CARG3->ffid
-    |  xori TMP2, TMP1, FRAME_VARG
+    |   lbu TMP3, LFUNC:CARG3->ffid
+    |   xori TMP2, TMP1, FRAME_VARG
     |  bnez TMP0, >7
     |1:
     |  sd LFUNC:RB, FRAME_FUNC(BASE)		// Copy function down, but keep PC.
     |  sltiu CARG4, TMP3, 2		// (> FF_C) Calling a fast function?
     |  mv TMP2, BASE
     |  mv RB, CARG3
-    |  mv TMP3, NARGS8:RC
+    |   mv TMP3, NARGS8:RC
     |  beqz NARGS8:RC, >3
     |2:
-    |  ld CRET1, 0(RA)
-    |  addi RA, RA, 8
+    |   ld CRET1, 0(RA)
+    |    addi RA, RA, 8
     |  addiw TMP3, TMP3, -8
-    |  sd CRET1, 0(TMP2)
-    |  addi TMP2, TMP2, 8
+    |   sd CRET1, 0(TMP2)
+    |    addi TMP2, TMP2, 8
     |  bnez TMP3, <2
     |3:
     |  or TMP0, TMP0, CARG4
@@ -3446,16 +3487,16 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  ld TMP1, -32(TMP1)
     |  cleartp LFUNC:TMP1
     |  ld TMP1, LFUNC:TMP1->pc
-    |  ld KBASE, PC2PROTO(k)(TMP1)     // Need to prepare KBASE.
+    |   ld KBASE, PC2PROTO(k)(TMP1)     // Need to prepare KBASE.
     |  j <4
     |
     |7:  // Tailcall from a vararg function.
     |  andi CARG4, TMP2, FRAME_TYPEP
-    |  sub TMP2, BASE, TMP2          // Relocate BASE down.
+    |   sub TMP2, BASE, TMP2          // Relocate BASE down.
     |  bnez CARG4, <1			// Vararg frame below?
     |  mv BASE, TMP2
     |  ld TMP1, FRAME_PC(TMP2)
-    |  andi TMP0, TMP1, FRAME_TYPE
+    |   andi TMP0, TMP1, FRAME_TYPE
     |  j <1
     break;
 
@@ -3464,13 +3505,13 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  mv TMP2, BASE			// Save old BASE for vmeta_call.
     |  add BASE, BASE, RA
     |  ld RB, -24(BASE)		//A, A+1, A+2 = A-3, A-2, A-1.
-    |  ld CARG1, -16(BASE)
-    |  ld CARG2, -8(BASE)
+    |   ld CARG1, -16(BASE)
+    |    ld CARG2, -8(BASE)
     |  li NARGS8:RC, 16		// Iterators get 2 arguments.
     |  sd RB, 0(BASE)			// Copy callable.
-    |  sd CARG1, 16(BASE)		// Copy state.
-    |  sd CARG2, 24(BASE)		// Copy control var.
-    |  addi BASE, BASE, 16
+    |   sd CARG1, 16(BASE)		// Copy state.
+    |    sd CARG2, 24(BASE)		// Copy control var.
+    |   addi BASE, BASE, 16
     |  checkfunc RB, ->vmeta_call
     |  ins_call
     break;
@@ -3480,68 +3521,68 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |->vm_IITERN:
     |  add RA, BASE, RA
     |  ld TAB:RB, -16(RA)
-    |  lw RC, -8(RA)		// Get index from control var.
+    |   lw RC, -8(RA)		// Get index from control var.
     |  cleartp TAB:RB
-    |  addi PC, PC, 4
+    |   addi PC, PC, 4
     |  lw TMP0, TAB:RB->asize
-    |  ld TMP1, TAB:RB->array
+    |   ld TMP1, TAB:RB->array
     |  slli CARG3, TISNUM, 47
     |1:  // Traverse array part.
     |  sltu TMP2, RC, TMP0
-    |  slliw TMP3, RC, 3
+    |   slliw TMP3, RC, 3
     |  beqz TMP2, >5			// Index points after array part?
     |  add TMP3, TMP1, TMP3
     |  ld CARG1, 0(TMP3)
-    |  lhu RD, -4+OFS_RD(PC)		// ITERL RD
-    |  or TMP2, RC, CARG3
-    |  addiw RC, RC, 1
+    |     lhu RD, -4+OFS_RD(PC)		// ITERL RD
+    |   or TMP2, RC, CARG3
+    |   addiw RC, RC, 1
     |  beq CARG1, TISNIL, <1		// Skip holes in array part.
-    |  sd TMP2, 0(RA)
+    |   sd TMP2, 0(RA)
     |  sd CARG1, 8(RA)
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
-    |  decode_BC4b RD
-    |  add RD, RD, TMP3
-    |  sw RC, -8(RA)		// Update control var.
-    |  add PC, PC, RD
+    |     lui TMP3, -0x20		// -BCBIAS_J*4
+    |     decode_BC4b RD
+    |     add RD, RD, TMP3
+    |   sw RC, -8(RA)		// Update control var.
+    |     add PC, PC, RD
     |3:
     |  ins_next
     |
     |5:  // Traverse hash part.
     |  lw TMP1, TAB:RB->hmask
     |  subw RC, RC, TMP0
-    |  ld TMP2, TAB:RB->node
+    |   ld TMP2, TAB:RB->node
     |6:
     |  sltu CARG1, TMP1, RC		// End of iteration? Branch to ITERL+1.
-    |  slliw TMP3, RC, 5
+    |   slliw TMP3, RC, 5
     |  bnez CARG1, <3
-    |  slliw RB, RC, 3
-    |  subw TMP3, TMP3, RB
+    |   slliw RB, RC, 3
+    |   subw TMP3, TMP3, RB
     |  add NODE:TMP3, TMP3, TMP2	// node = tab->node + (idx*32-idx*8)
     |  ld CARG1, 0(NODE:TMP3)
-    |  lhu RD, -4+OFS_RD(PC)		// ITERL RD
-    |  addiw RC, RC, 1
+    |     lhu RD, -4+OFS_RD(PC)		// ITERL RD
+    |   addiw RC, RC, 1
     |  beq CARG1, TISNIL, <6		// Skip holes in hash part.
     |  ld CARG2, NODE:TMP3->key
-    |  addu16i.d TMP3, r0, -0x2		// -BCBIAS_J*4
+    |     lui TMP3, -0x20		// -BCBIAS_J*4
     |  sd CARG1, 8(RA)
-    |  addw RC, RC, TMP0
-    |  decode_BC4b RD
-    |  addw RD, RD, TMP3
+    |    addw RC, RC, TMP0
+    |     decode_BC4b RD
+    |     addw RD, RD, TMP3
     |  sd CARG2, 0(RA)
-    |   add PC, PC, RD
-    |  sw RC, -8(RA)                // Update control var.
+    |     add PC, PC, RD
+    |   sw RC, -8(RA)                // Update control var.
     |  j <3
     break;
 
   case BC_ISNEXT:
     |  // RA = base*8, RD = target (points to ITERN)
     |  add RA, BASE, RA
-    |  srliw TMP0, RD, 1
+    |    srliw TMP0, RD, 1
     |  ld CFUNC:CARG1, -24(RA)
-    |  add TMP0, PC, TMP0
-    |  ld CARG2, -16(RA)
-    |  ld CARG3, -8(RA)
-    |  addu16i.d TMP2, r0, -0x2		// -BCBIAS_J*4
+    |    add TMP0, PC, TMP0
+    |   ld CARG2, -16(RA)
+    |   ld CARG3, -8(RA)
+    |    lui TMP2, -0x20		// -BCBIAS_J*4
     |  checkfunc CFUNC:CARG1, >5
     |  gettp CARG2, CARG2
     |  addi CARG2, CARG2, -LJ_TTAB
@@ -3550,20 +3591,19 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  or TMP3, CARG2, CARG3
     |  addi TMP1, TMP1, -FF_next_N
     |  or TMP3, TMP3, TMP1
-    |  addu16i.d TMP1, r0, 0xfffe		// LJ_KEYINDEX >> 16
+    |   lui TMP1, (LJ_KEYINDEX >> 12)
     |  bnez TMP3, >5
     |  add PC, TMP0, TMP2
-    |  slli TMP1, TMP1, 16
-    |  addu16i.d TMP1, TMP1, 0x7fff		// LJ_KEYINDEX & 0xffff
-    |  slli TMP1, TMP1, 16
+    |  ori TMP1, TMP1, (LJ_KEYINDEX & 0xfff)
+    |  slli TMP1, TMP1, 32
     |  sd TMP1, -8(RA)
     |1:
     |  ins_next
     |5:  // Despecialize bytecode if any of the checks fail.
     |  li TMP3, BC_JMP
-    |  li TMP1, BC_ITERC
+    |   li TMP1, BC_ITERC
     |  sb TMP3, -4+OFS_OP(PC)
-    |  add PC, TMP0, TMP2
+    |   add PC, TMP0, TMP2
     |  sb TMP1, OFS_OP(PC)
     |  j <1
     break;
@@ -3572,24 +3612,32 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = base*8, RB = (nresults+1)*8, RC = numparams*8
     |  ld TMP0, FRAME_PC(BASE)
     |  decode_RDtoRC8 RC, RD
-    |  decode_RB RB, INS
+    |   decode_RB RB, INS
     |  add RC, BASE, RC
-    |  add RA, BASE, RA
+    |   add RA, BASE, RA
     |  addi RC, RC, FRAME_VARG
-    |  add TMP2, RA, RB
+    |   add TMP2, RA, RB
     |  addi TMP3, BASE, -16		// TMP3 = vtop
     |  sub RC, RC, TMP0		// RC = vbase
     |  // Note: RC may now be even _above_ BASE if nargs was < numparams.
-    |  sub TMP1, TMP3, RC
+    |   sub TMP1, TMP3, RC
     |  beqz RB, >5			// Copy all varargs?
     |  addi TMP2, TMP2, -16
     |1:  // Copy vararg slots to destination slots.
     |  ld CARG1, 0(RC)
     |  sltu TMP0, RC, TMP3
-    |  addi RC, RC, 8
-    |  maskeqz CARG1, CARG1, TMP0
-    |  masknez TMP0, TISNIL, TMP0
-    |  or CARG1, CARG1, TMP0
+    |    addi RC, RC, 8
+    // |  maskeqz CARG1, CARG1, TMP0
+    // |  masknez TMP0, TISNIL, TMP0
+    // |  or CARG1, TMP0, TMP4
+    |  bnez TMP0, >2
+    |  mv CARG1, TISNIL
+    // |  seqz TMP4, TMP0
+    // |  neg TMP4, TMP4
+    // |  and TMP0, TMP0, TISNIL
+    // |  not TMP4, TMP4
+    // |  and TMP4, TMP4, CARG1
+    |2:
     |  sd CARG1, 0(RA)
     |  sltu TMP0, RA, TMP2
     |  addi RA, RA, 8
@@ -3599,29 +3647,29 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |5:  // Copy all varargs.
     |  ld TMP0, L->maxstack
-    |  li MULTRES, 8		// MULTRES = (0+1)*8
+    |   li MULTRES, 8		// MULTRES = (0+1)*8
     |  blez, TMP1, <3			// No vararg slots?
     |  add TMP2, RA, TMP1
     |  sltu TMP2, TMP0, TMP2
-    |  addi MULTRES, TMP1, 8
+    |   addi MULTRES, TMP1, 8
     |  bnez TMP2, >7
     |6:
     |  ld CRET1, 0(RC)
-    |  addi RC, RC, 8
+    |   addi RC, RC, 8
     |  sd CRET1, 0(RA)
     |  sltu TMP0, RC, TMP3
-    |  addi RA, RA, 8
+    |   addi RA, RA, 8
     |  bnez TMP0, <6			// More vararg slots?
     |  j <3
     |
     |7:  // Grow stack for varargs.
-    |  sd RA, L->top
+    |   sd RA, L->top
     |  sub RA, RA, BASE
-    |  sd BASE, L->base
+    |   sd BASE, L->base
     |  sub BASE, RC, BASE		// Need delta, because BASE may change.
-    |  sd PC, SAVE_PC(sp)
+    |   sd PC, SAVE_PC(sp)
     |  srliw CARG2, TMP1, 3
-    |  mv CARG1, L
+    |   mv CARG1, L
     |  jal extern lj_state_growstack	// (lua_State *L, int n)
     |  mv RC, BASE
     |  ld BASE, L->base
@@ -3643,35 +3691,35 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = results*8, RD = (nresults+1)*8
     |->BC_RET_Z1:
     |  ld PC, FRAME_PC(BASE)
-    |  add RA, BASE, RA
-    |  mv MULTRES, RD
+    |   add RA, BASE, RA
+    |    mv MULTRES, RD
     |1:
     |  andi TMP0, PC, FRAME_TYPE
-    |  xori TMP1, PC, FRAME_VARG
+    |   xori TMP1, PC, FRAME_VARG
     |  bnez TMP0, ->BC_RETV_Z
     |
     |->BC_RET_Z:
     |  // BASE = base, RA = resultptr, RD = (nresults+1)*8, PC = return
-    |  lw INS, -4(PC)
-    |  addi TMP2, BASE, -16
-    |  addi RC, RD, -8
+    |   lw INS, -4(PC)
+    |    addi TMP2, BASE, -16
+    |    addi RC, RD, -8
     |  decode_RA TMP0, INS
-    |  decode_RB RB, INS
-    |  add TMP3, TMP2, RB
-    |  sub BASE, TMP2, TMP0
+    |   decode_RB RB, INS
+    |   sub BASE, TMP2, TMP0
+    |   add TMP3, TMP2, RB
     |  beqz RC, >3
     |2:
-    |  ld CRET1, 0(RA)
-    |  addi RA, RA, 8
+    |   ld CRET1, 0(RA)
+    |    addi RA, RA, 8
     |  addi RC, RC, -8
-    |  sd CRET1, 0(TMP2)
-    |  addi TMP2, TMP2, 8
+    |   sd CRET1, 0(TMP2)
+    |    addi TMP2, TMP2, 8
     |  bnez RC, <2
     |3:
     |  addi TMP3, TMP3, -8
     |5:
     |  sltu TMP0, TMP2, TMP3
-    |  ld LFUNC:TMP1, FRAME_FUNC(BASE)
+    |   ld LFUNC:TMP1, FRAME_FUNC(BASE)
     |  bnez TMP0, >6
     |  cleartp LFUNC:TMP1
     |  ld TMP1, LFUNC:TMP1->pc
@@ -3680,7 +3728,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |6:  // Fill up results with nil.
     |  sd TISNIL, 0(TMP2)
-    |  addi TMP2, TMP2, 8
+    |   addi TMP2, TMP2, 8
     |  j <5
     |
     |->BC_RETV_Z:  // Non-standard return case.
@@ -3688,32 +3736,32 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  bnez TMP2, ->vm_return
     |  // Return from vararg function: relocate BASE down.
     |  sub BASE, BASE, TMP1
-    |  ld PC, FRAME_PC(BASE)
+    |   ld PC, FRAME_PC(BASE)
     |  j <1
     break;
 
   case BC_RET0: case BC_RET1:
     |  // RA = results*8, RD = (nresults+1)*8
     |  ld PC, FRAME_PC(BASE)
-    |  add RA, BASE, RA
-    |  mv MULTRES, RD
+    |   add RA, BASE, RA
+    |    mv MULTRES, RD
     |  andi TMP0, PC, FRAME_TYPE
-    |  xori TMP1, PC, FRAME_VARG
+    |   xori TMP1, PC, FRAME_VARG
     |  bnez TMP0, ->BC_RETV_Z
     |  lw INS, -4(PC)
-    |  addi TMP2, BASE, -16
+    |   addi TMP2, BASE, -16
     if (op == BC_RET1) {
       |  ld CRET1, 0(RA)
     }
     |  decode_RB RB, INS
-    |  decode_RA RA, INS
-    |  sub BASE, TMP2, RA
+    |   decode_RA RA, INS
+    |   sub BASE, TMP2, RA
     if (op == BC_RET1) {
       |  sd CRET1, 0(TMP2)
     }
     |5:
     |  sltu TMP0, RD, RB
-    |  ld TMP1, FRAME_FUNC(BASE)
+    |   ld TMP1, FRAME_FUNC(BASE)
     |  bnez TMP0, >6
     |  cleartp LFUNC:TMP1
     |  ld TMP1, LFUNC:TMP1->pc
@@ -3749,23 +3797,23 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     vk = (op == BC_IFORL || op == BC_JFORL);
     |  add RA, BASE, RA
     |  ld CARG1, FORL_IDX*8(RA)		// CARG1 = IDX
-    |  ld CARG2, FORL_STEP*8(RA)		// CARG2 = STEP
-    |  ld CARG3, FORL_STOP*8(RA)		// CARG3 = STOP
+    |   ld CARG2, FORL_STEP*8(RA)		// CARG2 = STEP
+    |    ld CARG3, FORL_STOP*8(RA)		// CARG3 = STOP
     |  gettp CARG4, CARG1
-    |  gettp CARG5, CARG2
-    |  gettp CARG6, CARG3
+    |   gettp CARG5, CARG2
+    |    gettp CARG6, CARG3
     if (op != BC_JFORL) {
       |  srliw RD, RD, 1
-      |  addu16i.d TMP2, r0, -0x2	// -BCBIAS_J<<2
+      |  lui TMP2, -0x20	// -BCBIAS_J<<2
       |  add TMP2, RD, TMP2
     }
     |  bne CARG4, TISNUM, >3
     |  sext.w CARG4, CARG1		// start
-    |  sext.w CARG3, CARG3		// stop
+    |   sext.w CARG3, CARG3		// stop
     if (!vk) {				// init
       |  bne CARG6, TISNUM, ->vmeta_for
       |  bne CARG5, TISNUM, ->vmeta_for
-      |  bstrpick.d TMP0, CARG2, 31, 31	// sign
+      |. bextfi TMP0, CARG2, 31, 31	// sign
       |  slt CARG2, CARG3, CARG4
       |  slt TMP1, CARG4, CARG3
       |  maskeqz TMP1, TMP1, TMP0
@@ -3779,8 +3827,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  and TMP3, TMP3, TMP1
       |  slt TMP1, CARG1, CARG3		// start+step < stop ?
       |  slt CARG3, CARG3, CARG1	// stop < start+step ?
-      |  slt TMP0, CARG5, r0		// step < 0 ?
-      |  slt TMP3, TMP3, r0		// ((y^a) & (y^b)) < 0: overflow.
+      |  sltz TMP0, CARG5		// step < 0 ?
+      |   sltz TMP3, TMP3		// ((y^a) & (y^b)) < 0: overflow.
       |  maskeqz TMP1, TMP1, TMP0
       |  masknez CARG3, CARG3, TMP0
       |  or CARG3, CARG3, TMP1
@@ -3791,13 +3839,19 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     }
     |1:
     if (op == BC_FORI) {
-      |  maskeqz TMP2, TMP2, CARG2	// CARG2!=0: jump out the loop; CARG2==0: next INS
+      // |  maskeqz TMP2, TMP2, CARG2	// CARG2!=0: jump out the loop; CARG2==0: next INS
+      |  snez TMP4, CARG2
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
       |  add PC, PC, TMP2
     } else if (op == BC_JFORI) {
       |  add PC, PC, TMP2
       |  lhu RD, -4+OFS_RD(PC)
     } else if (op == BC_IFORL) {
-      |  masknez TMP2, TMP2, CARG2	// CARG2!=0: next INS; CARG2==0: jump back
+      // |  masknez TMP2, TMP2, CARG2	// CARG2!=0: next INS; CARG2==0: jump back
+      |  snez TMP4, CARG2
+      |  neg TMP4, TMP4
+      |  and TMP2, TMP2, TMP4
       |  add PC, PC, TMP2
     }
     |  ins_next1
@@ -3815,7 +3869,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  fld FTMP0, FORL_IDX*8(RA)	// start
     |  fld FTMP1, FORL_STOP*8(RA)	// stop
     |  ld TMP0, FORL_STEP*8(RA)	// step
-    |  slt TMP0, TMP0, r0		// step < 0 ?
+    |  sltz TMP0, TMP0		// step < 0 ?
     |  fmv.d.x FTMP2, TMP0
     if (!vk) {
       |  sltiu TMP3, CARG4, LJ_TISNUM	// start is number ?
@@ -3824,10 +3878,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  and TMP3, TMP3, TMP1
       |  and TMP0, TMP0, TMP3
       |  beqz TMP0, ->vmeta_for		// if start or step or stop isn't number
-      |  fcmp.clt.d FCC0, FTMP0, FTMP1		// start < stop ?
-      |  fcmp.clt.d FCC1, FTMP1, FTMP0		// stop < start ?
-      |  movcf2fr FTMP3, FCC0
-      |  movcf2fr FTMP4, FCC1
+      |  flt.d TMP3, FTMP0, FTMP1		// start < stop ?
+      |  flt.d TMP4, FTMP1, FTMP0		// stop < start ?
       |  movfr2cf FCC0, FTMP2
       |  fsel FTMP2, FTMP4, FTMP3, FCC0
       |  fmv.x.d CARG2, FTMP2	// CARG2=0:+,start<stop or -,start>stop
@@ -3835,15 +3887,18 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     } else {
       |  fld FTMP3, FORL_STEP*8(RA)
       |  fadd FTMP0, FTMP0, FTMP3		// start + step
-      |  fcmp.clt.d FCC0, FTMP0, FTMP1		// start + step < stop ?
-      |  fcmp.clt.d FCC1, FTMP1, FTMP0
-      |  movcf2fr FTMP3, FCC0
-      |  movcf2fr FTMP4, FCC1
+      |  flt.d TMP3, FTMP0, FTMP1		// start + step < stop ?
+      |  flt.d TMP4, FTMP1, FTMP0
+      |  neg TMP3, TMP3
+      |  neg TMP4, TMP4
       |  movfr2cf FCC0, FTMP2
       |  fsel FTMP2, FTMP4, FTMP3, FCC0
       |  fmv.x.d CARG2, FTMP2
       if (op == BC_IFORL) {
-	|  masknez TMP2, TMP2, CARG2
+	// |  masknez TMP2, TMP2, CARG2
+  |  snez TMP4, CARG2
+  |  neg TMP4, TMP4
+  |  and TMP2, TMP2, TMP4
 	|  add PC, PC, TMP2
       }
       |  fsd FTMP0, FORL_IDX*8(RA)
