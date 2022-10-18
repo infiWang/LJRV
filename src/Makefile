@@ -52,6 +52,7 @@ CCOPT_arm=
 CCOPT_arm64=
 CCOPT_ppc=
 CCOPT_mips=
+CCOPT_riscv64= -march=rv64g
 #
 CCDEBUG=
 # Uncomment the next line to generate debug information:
@@ -70,10 +71,10 @@ CCWARN= -Wall
 # as dynamic mode.
 #
 # Mixed mode creates a static + dynamic library and a statically linked luajit.
-BUILDMODE= mixed
+#BUILDMODE= mixed
 #
 # Static mode creates a static library and a statically linked luajit.
-#BUILDMODE= static
+BUILDMODE= static
 #
 # Dynamic mode creates a dynamic library and a dynamically linked luajit.
 # Note: this executable will only run when the library is installed!
@@ -267,7 +268,15 @@ ifneq (,$(findstring LJ_TARGET_MIPS ,$(TARGET_TESTARCH)))
     TARGET_LJARCH= mips
   endif
 else
+ifneq (,$(findstring LJ_TARGET_RISCV32 ,$(TARGET_TESTARCH)))
+    TARGET_LJARCH= riscv32
+else
+ifneq (,$(findstring LJ_TARGET_RISCV64 ,$(TARGET_TESTARCH)))
+    TARGET_LJARCH= riscv64
+else
   $(error Unsupported target architecture)
+endif
+endif
 endif
 endif
 endif
@@ -467,6 +476,12 @@ ifeq (ppc,$(TARGET_LJARCH))
   ifeq (PS3,$(TARGET_SYS))
     DASM_AFLAGS+= -D PPE -D TOC
   endif
+endif
+ifneq (,$(findstring LJ_TARGET_RISCV32 ,$(TARGET_TESTARCH)))
+  DASM_AFLAGS+= -D RISCV32
+endif
+ifneq (,$(findstring LJ_TARGET_RISCV64 ,$(TARGET_TESTARCH)))
+  DASM_AFLAGS+= -D RISCV64
 endif
 endif
 endif
