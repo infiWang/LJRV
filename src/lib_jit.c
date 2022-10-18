@@ -719,6 +719,13 @@ static uint32_t jit_cpudetect(void)
   }
 #endif
 
+#elif LJ_TARGET_RISCV
+#if LJ_HASJIT
+
+// Detect C/B/V/P?
+
+#endif
+
 #else
 #error "Missing CPU detection for this architecture"
 #endif
