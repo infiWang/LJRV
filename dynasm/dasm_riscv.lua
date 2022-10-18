@@ -214,11 +214,7 @@ end
 
 -- Arch-specific maps.
 local map_archdef = {
-  zero = "x0",
-  ra = "x1", sp = "x2", gp = "x3", tp = "x4",
-  -- fflags = 0x001, frm = 0x002, fcsr = 0x003,
-  -- cycle = 0xc00, time = 0xc01, instret = 0xc02,
-  -- cycleh = 0xc80, timeh = 0xc81, instreth = 0xc82
+  ra = "x1", sp = "x2",
 } -- Ext. register name -> int. name.
 
 local map_type = {}		-- Type name -> { ctype, reg }
@@ -226,11 +222,8 @@ local ctypenum = 0		-- Type number (for Dt... macros).
 
 -- Reverse defines for registers.
 function _M.revdef(s)
-  if s == "x0" then return "zero"
-  elseif s == "x1" then return "ra"
-  elseif s == "x2" then return "sp"
-  elseif s == "x3" then return "gp"
-  elseif s == "x4" then return "tp" end
+  if s == "x1" then return "ra"
+  elseif s == "x2" then return "sp" end
   return s
 end
 
@@ -287,9 +280,9 @@ local map_op_rv32imafd = {
   xori_3 = "00004013DRI",
   ori_3 = "00006013DRI",
   andi_3 = "00007013DRI",
-  slli_3 = "00001013DRi",
-  srli_3 = "00005013DRi",
-  srai_3 = "40005013DRi",
+  slli_3 = "00001013DRs",
+  srli_3 = "00005013DRs",
+  srai_3 = "40005013DRs",
   -- pseudo-instrs
   seqz_2 = "00103013DR",
   ["zext.b_2"] = "0ff07013DR",
@@ -449,20 +442,20 @@ local map_op_rv64imafd = {
 
   sd_2 = "00003023rS",
 
-  slli_3 = "00001013DRj",
-  srli_3 = "00005013DRj",
-  srai_3 = "40005013DRj",
+  slli_3 = "00001013DRs",
+  srli_3 = "00005013DRs",
+  srai_3 = "40005013DRs",
 
   addiw_3 = "0000001bDRI",
-  slliw_3 = "0000101bDRi",
-  srliw_3 = "0000501bDRi",
-  sraiw_3 = "4000501bDRi",
+  slliw_3 = "0000101bDRs",
+  srliw_3 = "0000501bDRs",
+  sraiw_3 = "4000501bDRs",
 
   addw_3 = "0000003bDRr",
   subw_3 = "4000003bDRr",
   sllw_3 = "0000103bDRr",
-  sltw_3 = "0000203bDRr",
-  slaw_3 = "4000303bDRr",
+  srlw_3 = "0000503bDRr",
+  sraw_3 = "4000503bDRr",
 
   negw_2 = "4000003bDR",
   ["sext.w_2"] = "0000001bDR",
@@ -496,10 +489,10 @@ local map_op_rv64imafd = {
   -- RV64D
   ["fcvt.l.d_3"]  = "c2200053DGM",
   ["fcvt.lu.d_3"] = "c2300053DGM",
-  ["fmv.x.d_2"]   = "e2000053FY",
+  ["fmv.x.d_2"]   = "e2000053DG",
   ["fcvt.d.l_3"]  = "d2200053FRM",
   ["fcvt.d.lu_3"] = "d2300053FRM",
-  ["fmv.d.x_2"]   = "f2000053FY",
+  ["fmv.d.x_2"]   = "f2000053FR",
 
 }
 
@@ -621,7 +614,10 @@ end
 local function parse_imms(imm)
   local n = tonumber(imm)
   if n then
-    if n >= -2048 and n < 2048 then return n end
+    if n >= -2048 and n < 2048 then
+      local imm5, imm7 = band(n, 0x1f), shr(band(n, 0xfe0), 5)
+      return shl(imm5, 7) + shl(imm7, 25)
+    end
     werror("out of range immediate `"..imm.."'")
   elseif match(imm, "^[xf]([1-3]?[0-9])$") or
          match(imm, "^([%w_]+):([xf][1-3]?[0-9])$") then
@@ -640,49 +636,22 @@ local function parse_rm(mode)
   else werror("bad rounding mode `"..mode.."'") end
 end
 
--- local function parse_disp(disp, load)
---   local imm, reg = match(disp, "^(.*)%(([%w_:]+)%)$")
---   if imm then
---     local r = shl(parse_gpr(reg), 15)
---     local extname = match(imm, "^extern%s+(%S+)$")
---     if extname then
---       waction("REL_EXT", map_extern[extname], nil, 1)
---       return r
---     else
---       if load then
--- 	      return r + parse_imm(imm, 12, 20, 0, true)
---       else
--- 	      return r + parse_imms(imm)
---       end
---     end
---   end
---   local reg, tailr = match(disp, "^([%w_:]+)%s*(.*)$")
---   if reg and tailr ~= "" then
---     local r, tp = parse_gpr(reg)
---     if tp then
---       if load then
--- 	      waction("IMM", 32768+12*32+20, format(tp.ctypefmt, tailr))
---       else
--- 	      waction("IMMS", 0, format(tp.ctypefmt, tailr))
---       end
---       return shl(r, 15)
---     end
---   end
---   werror("bad displacement `"..disp.."'")
--- end
-
 local function parse_disp(disp, mode)
   local imm, reg = match(disp, "^(.*)%(([%w_:]+)%)$")
   if imm then
-    local r = parse_gpr(reg)
+    local r = shl(parse_gpr(reg), 15)
     local extname = match(imm, "^extern%s+(%S+)$")
     if extname then
       waction("REL_EXT", map_extern[extname], nil, 1)
-      return r, 0
+      return r
     else
-      if mode == "load" then return r, parse_imm(imm, 12, 20, 0, true)
-      elseif mode == "store" then return r, parse_imms(imm)
-      else werror("bad displacement mode `"..mode.."'") end
+      if mode == "load" then
+        return r + parse_imm(imm, 12, 20, 0, true)
+      elseif mode == "store" then
+        return r + parse_imms(imm)
+      else
+        werror("bad displacement mode '"..mode.."'")
+      end
     end
   end
   local reg, tailr = match(disp, "^([%w_:]+)%s*(.*)$")
@@ -696,7 +665,7 @@ local function parse_disp(disp, mode)
       else
         werror("bad displacement mode '"..mode.."'")
       end
-      return r, 0
+      return shl(r, 15)
     end
   end
   werror("bad displacement `"..disp.."'")
@@ -770,21 +739,16 @@ map_op[".template__"] = function(params, template, nparams)
       op = op + shl(r, 15) + shl(r, 20); n = n + 1
     elseif p == "I" then  -- I-type imm12
       op = op + parse_imm(params[n], 12, 20, 0, true); n = n + 1
-    elseif p == "i" then  -- I-type shamt5
-      op = op + parse_imm(params[n], 5, 20, 0, false); n = n + 1
-    elseif p == "j" then  -- I-type shamt6
-      op = op + parse_imm(params[n], 6, 20, 0, false); n = n + 1
+    elseif p == "s" then  -- I-type shamt
+      op = op + parse_imm(params[n], riscv32 and 5 or riscv64 and 6, 20, 0, false); n = n + 1
     elseif p == "u" then  -- I-type uimm
       op = op + parse_imm(params[n], 5, 15, 0, false); n = n + 1
     elseif p == "U" then  -- U-type imm20
       op = op + parse_imm(params[n], 20, 12, 0, false); n = n + 1
     elseif p == "L" then  -- load
-      local rs1, imm = parse_disp(params[n], "load")
-      op = op + shl(imm, 20) + shl(rs1, 15); n = n + 1
+      op = op + parse_disp(params[n], "load"); n = n + 1
     elseif p == "S" then  -- store
-      local rs1, imm = parse_disp(params[n], "store")
-      local imm5, imm7 = band(imm, 0x1f), shr(band(imm, 0xfe0), 5)
-      op = op + shl(imm7, 25) + shl(rs1, 15) + shl(imm5, 7); n = n + 1
+      op = op + parse_disp(params[n], "store"); n = n + 1
     elseif p == "B" or p == "J" then  -- control flow
       local mode, m, s = parse_label(params[n], false)
       if p == "B" then m = m + 2048 end
