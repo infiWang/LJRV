@@ -375,10 +375,9 @@
 |  rorw a, b, x28
 |.endmacro
 |
-|.macro bextfi, a, b, c, d
-|  srli a, b, d
-|  slli a, a, (d+63-c)
-|  srli a, a, (63-c)
+|.macro bfextri, a, b, c, d
+|  slli a, b, (63-c)
+|  srli a, a, (d+63-c)
 |.endmacro
 |
 |//-----------------------------------------------------------------------
@@ -541,7 +540,7 @@
 |
 |// Clear type tag. Isolate lowest 64-17=47 bits of reg.
 |.macro cleartp, reg; slli reg, reg, 17; srli reg, reg, 17; .endmacro
-|.macro cleartp, dst, reg; slli dst, reg, 17; srli reg, reg, 17; .endmacro
+|.macro cleartp, dst, reg; slli dst, reg, 17; srli dst, dst, 17; .endmacro
 |
 |// Set type tag: Merge 17 type bits into bits [47, 63] of dst.
 |.macro settp, dst, tp;
@@ -580,12 +579,12 @@
 |.endmacro
 |
 |.macro mov_false, reg
-|  li reg, 0x0001
+|  li reg, 0x001
 |  slli reg, reg, 47
 |  not reg, reg
 |.endmacro
 |.macro mov_true, reg
-|  li reg, 0x0001
+|  li reg, 0x001
 |  slli reg, reg, 48
 |  not reg, reg
 |.endmacro
@@ -1274,8 +1273,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  liw TMP1, ~LJ_TISNUM
   |  sltu TMP2, TISNUM, TMP0
   |  not TMP3, TMP0
-  |  bnez TMP1, >1
-  |  mv TMP2, TMP3
+  |  bnez TMP2, >1
+  |  mv TMP3, TMP1
   |1:
   |  slli TMP3, TMP3, 3
   |  add TMP3, CFUNC:RB, TMP3
@@ -1288,14 +1287,14 @@ static void build_subroutines(BuildCtx *ctx)
   |  gettp TMP2, CARG1
   |  addi TMP0, TMP2, -LJ_TTAB
   |  addi TMP1, TMP2, -LJ_TUDATA
-  |  beqz TMP0, >1
-  |  mv TMP0, TMP1
-  |1:
+  |  snez TMP0, TMP0
+  |  neg TMP0, TMP0
+  |  and TMP0, TMP0, TMP1
   |  cleartp TAB:CARG1
-  |  bnez TMP0, >7
-  |2:  // Field metatable must be at same offset for GCtab and GCudata!
+  |  bnez TMP0, >6
+  |1:  // Field metatable must be at same offset for GCtab and GCudata!
   |  ld TAB:RB, TAB:CARG1->metatable
-  |3:
+  |2:
   |   lxd STR:RC, DISPATCH, DISPATCH_GL(gcroot[GCROOT_MMNAME+MM_metatable])
   |  li CARG1, LJ_TNIL
   |  bxeqz TAB:RB, ->fff_restv
@@ -1309,32 +1308,32 @@ static void build_subroutines(BuildCtx *ctx)
   |  add NODE:TMP2, NODE:TMP2, TMP1	// node = tab->node + (idx*32-idx*8)
   |  liw CARG4, LJ_TSTR
   |  settp STR:RC, CARG4		// Tagged key to look for.
-  |4:  // Rearranged logic, because we expect _not_ to find the key.
+  |3:  // Rearranged logic, because we expect _not_ to find the key.
   |  ld TMP0, NODE:TMP2->key
   |   ld CARG1, NODE:TMP2->val
   |    ld NODE:TMP2, NODE:TMP2->next
   |  li TMP3, LJ_TTAB
-  |  beq RC, TMP0, >6
-  |  bnez NODE:TMP2, <4
-  |5:
+  |  beq RC, TMP0, >5
+  |  bnez NODE:TMP2, <3
+  |4:
   |  mv CARG1, RB
   |  settp CARG1, TMP3
   |  j ->fff_restv			// Not found, keep default result.
-  |6:
+  |5:
   |  bxne CARG1, TISNIL, ->fff_restv
-  |  j <5				// Ditto for nil value.
+  |  j <4				// Ditto for nil value.
   |
-  |7:
+  |6:
   |  sltiu TMP3, TMP2, LJ_TISNUM
   |  neg TMP3, TMP3
-  |  and TMP2, TMP2, TMP3
-  |  not TMP3, TMP3
   |  and TMP0, TISNUM, TMP3
+  |  not TMP3, TMP3
+  |  and TMP2, TMP2, TMP3
   |  or TMP2, TMP2, TMP0
   |  slli TMP2, TMP2, 3
   |   sub TMP0, DISPATCH, TMP2
   |   lxd TAB:RB, TMP0, DISPATCH_GL(gcroot[GCROOT_BASEMT])-8
-  |  j <3
+  |  j <2
   |
   |.ffunc_2 setmetatable
   |  // Fast path: no mt for table yet and not clearing the mt.
@@ -2044,8 +2043,8 @@ static void build_subroutines(BuildCtx *ctx)
   |   srli TMP2,TMP0, 8
   |  andi TMP3, TMP2, 0xff
   |  slli TMP3, TMP3, 8
-  |   bextfi TMP1, CRET1, 31, 24
-  |  bextfi TMP3, TMP0, 23, 16
+  |   bfextri TMP1, CRET1, 31, 24
+  |  bfextri TMP3, TMP0, 23, 16
   |   or CRET1, TMP1, TMP3
   |  j ->fff_resi
   |
@@ -2341,7 +2340,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  flt.d TMP3, FTMP0, FTMP2
     } else {
       |  fle.d TMP3, FTMP2, FTMP0
-      |  not TMP3, TMP3
+      |  seqz TMP3, TMP3
     }
     if (op == BC_ISLT || op == BC_ISGT) {
       |  snez TMP4, TMP3
@@ -2524,7 +2523,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |5:  // RA and RD are both numbers.
     |  feq.d TMP0, FTMP0, FTMP2
-    |  not TMP0, TMP0
+    |  seqz TMP0, TMP0
     |  j <1
     |
     |6: // RA is an integer, RD is a number.
@@ -3672,10 +3671,10 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  or TMP3, CARG2, CARG3
     |  addi TMP1, TMP1, -FF_next_N
     |  or TMP3, TMP3, TMP1
-    |   lui TMP1, (LJ_KEYINDEX >> 12) & 0xfffff
+    |   lui TMP1, ((LJ_KEYINDEX - (((LJ_KEYINDEX & 0xfff)^0x800) - 0x800)) >> 12) & 0xfffff
     |  bnez TMP3, >5
     |  add PC, TMP0, TMP2
-    |  ori TMP1, TMP1, (LJ_KEYINDEX & 0xfff)
+    |  addi TMP1, TMP1, (LJ_KEYINDEX & 0xfff)
     |  slli TMP1, TMP1, 32
     |  sd TMP1, -8(RA)
     |1:
@@ -3886,7 +3885,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     if (!vk) {				// init
       |  bxne CARG6, TISNUM, ->vmeta_for
       |  bxne CARG5, TISNUM, ->vmeta_for
-      |   bextfi TMP0, CARG2, 31, 31	// sign
+      |   bfextri TMP0, CARG2, 31, 31	// sign
       |  slt CARG2, CARG3, CARG4
       |  slt TMP1, CARG4, CARG3
       |  snez TMP4, TMP0
@@ -3907,9 +3906,9 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |   sltz TMP3, TMP3		// ((y^a) & (y^b)) < 0: overflow.
       |  snez TMP4, TMP0
       |  neg TMP4, TMP4
-      |  and CARG3, CARG3, TMP4
-      |  not TMP4, TMP4
       |  and TMP1, TMP1, TMP4
+      |  not TMP4, TMP4
+      |  and CARG3, CARG3, TMP4
       |  or CARG3, CARG3, TMP1
       |  or CARG2, CARG3, TMP3		// CARG2=1: overflow; CARG2=0: continue
       |  zext.w CARG1, CARG1
@@ -3947,6 +3946,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  fld FTMP1, FORL_STOP*8(RA)	// stop
     |  ld TMP0, FORL_STEP*8(RA)	// step
     |  sltz CARG2, TMP0		// step < 0 ?
+    |  neg CARG2, CARG2
     if (!vk) {
       |  sltiu TMP3, CARG4, LJ_TISNUM	// start is number ?
       |  sltiu TMP0, CARG5, LJ_TISNUM	// step is number ?
@@ -3956,9 +3956,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  bxeqz TMP0, ->vmeta_for		// if start or step or stop isn't number
       |  flt.d TMP3, FTMP0, FTMP1		// start < stop ?
       |  flt.d TMP4, FTMP1, FTMP0		// stop < start ?
-      |  neg TMP3, TMP3
-      |  neg TMP4, TMP4
       |  and TMP3, TMP3, CARG2
+      |  not CARG2, CARG2
       |  and TMP4, TMP4, CARG2
       |  or CARG2, TMP3, TMP4	// CARG2=0:+,start<stop or -,start>stop
       |  j <1
@@ -3967,9 +3966,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  fadd.d FTMP0, FTMP0, FTMP3		// start + step
       |  flt.d TMP3, FTMP0, FTMP1		// start + step < stop ?
       |  flt.d TMP4, FTMP1, FTMP0
-      |  neg TMP3, TMP3
-      |  neg TMP4, TMP4
       |  and TMP3, TMP3, CARG2
+      |  not CARG2, CARG2
       |  and TMP4, TMP4, CARG2
       |  or CARG2, TMP3, TMP4
       if (op == BC_IFORL) {
@@ -4102,9 +4100,9 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  beqz CARG2, >3
     |  seqz TMP4, CARG2		// Clear old fixarg slot (help the GC).
     |  neg TMP4, TMP4
-    |  and TMP3, CARG1, TMP4
+    |  and CARG1, CARG1, TMP4
     |  not TMP4, TMP4
-    |  and CARG1, TISNIL, TMP4
+    |  and TMP3, TISNIL, TMP4
     |  or CARG1, CARG1, TMP3
     |  sd CARG1, -8(RA)
     |  sd TMP0, 8(TMP1)
