@@ -457,7 +457,7 @@ local map_op_rv64imafd = {
   srlw_3 = "0000503bDRr",
   sraw_3 = "4000503bDRr",
 
-  negw_2 = "4000003bDR",
+  negw_2 = "4000003bDr",
   ["sext.w_2"] = "0000001bDR",
 
   -- RV64M
