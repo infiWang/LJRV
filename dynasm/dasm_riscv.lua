@@ -55,7 +55,9 @@ local function __orderedNext(t, state)
         key = t.__orderedIndex[1]
     else
         -- fetch the next value
-        for i = 1,table.getn(t.__orderedIndex) do
+        local j = 0
+        for _,_ in pairs(t.__orderedIndex) do j = j + 1 end
+        for i = 1, j do
             if t.__orderedIndex[i] == state then
                 key = t.__orderedIndex[i+1]
             end
