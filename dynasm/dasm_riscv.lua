@@ -324,9 +324,9 @@ local map_op_rv32imafd = {
   xori_3 = "00004013DRI",
   ori_3 = "00006013DRI",
   andi_3 = "00007013DRI",
-  slli_3 = "00001013DRs",
-  srli_3 = "00005013DRs",
-  srai_3 = "40005013DRs",
+  slli_3 = "00001013DRi",
+  srli_3 = "00005013DRi",
+  srai_3 = "40005013DRi",
   -- pseudo-instrs
   seqz_2 = "00103013DR",
   ["zext.b_2"] = "0ff07013DR",
@@ -486,14 +486,14 @@ local map_op_rv64imafd = {
 
   sd_2 = "00003023rS",
 
-  slli_3 = "00001013DRs",
-  srli_3 = "00005013DRs",
-  srai_3 = "40005013DRs",
+  slli_3 = "00001013DRj",
+  srli_3 = "00005013DRj",
+  srai_3 = "40005013DRj",
 
   addiw_3 = "0000001bDRI",
-  slliw_3 = "0000101bDRs",
-  srliw_3 = "0000501bDRs",
-  sraiw_3 = "4000501bDRs",
+  slliw_3 = "0000101bDRi",
+  srliw_3 = "0000501bDRi",
+  sraiw_3 = "4000501bDRi",
 
   addw_3 = "0000003bDRr",
   subw_3 = "4000003bDRr",
@@ -783,8 +783,10 @@ map_op[".template__"] = function(params, template, nparams)
       op = op + shl(r, 15) + shl(r, 20); n = n + 1
     elseif p == "I" then  -- I-type imm12
       op = op + parse_imm(params[n], 12, 20, 0, true); n = n + 1
-    elseif p == "s" then  -- I-type shamt
-      op = op + parse_imm(params[n], riscv32 and 5 or riscv64 and 6, 20, 0, false); n = n + 1
+    elseif p == "i" then  -- I-type shamt5
+      op = op + parse_imm(params[n], 5, 20, 0, false); n = n + 1
+    elseif p == "j" then  -- I-type shamt6
+      op = op + parse_imm(params[n], 6, 20, 0, false); n = n + 1
     elseif p == "u" then  -- I-type uimm
       op = op + parse_imm(params[n], 5, 15, 0, false); n = n + 1
     elseif p == "U" then  -- U-type imm20
