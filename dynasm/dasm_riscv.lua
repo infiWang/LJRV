@@ -33,28 +33,21 @@ local bit = bit or require("bit")
 local band, shl, shr, sar = bit.band, bit.lshift, bit.rshift, bit.arshift
 local tohex = bit.tohex
 
-local function __orderedGenIndex( t )
+local function __orderedIndexGen(t)
     local orderedIndex = {}
     for key in pairs(t) do
-        table.insert( orderedIndex, key )
+        table.insert(orderedIndex, key)
     end
     table.sort( orderedIndex )
     return orderedIndex
 end
 
 local function __orderedNext(t, state)
-    -- Equivalent of the next function, but returns the keys in the alphabetic
-    -- order. We use a temporary ordered key table that is stored in the
-    -- table being iterated.
-
     local key = nil
-    --print("orderedNext: state = "..tostring(state) )
     if state == nil then
-        -- the first time, generate the index
-        t.__orderedIndex = __orderedGenIndex( t )
+        t.__orderedIndex = __orderedIndexGen(t)
         key = t.__orderedIndex[1]
     else
-        -- fetch the next value
         local j = 0
         for _,_ in pairs(t.__orderedIndex) do j = j + 1 end
         for i = 1, j do
@@ -68,14 +61,11 @@ local function __orderedNext(t, state)
         return key, t[key]
     end
 
-    -- no more value to return, cleanup
     t.__orderedIndex = nil
     return
 end
 
-local function orderedPairs(t)
-    -- Equivalent of the pairs() function on tables. Allows to iterate
-    -- in order
+local function opairs(t)
     return __orderedNext, t, nil
 end
 
@@ -586,11 +576,11 @@ local map_op_zifencei = {
 local list_map_op_rv32 = { ['a'] = map_op_rv32imafd, ['b'] = map_op_zifencei, ['c'] = map_op_zicsr }
 local list_map_op_rv64 = { ['a'] = map_op_rv32imafd, ['b'] = map_op_rv64imafd, ['c'] = map_op_zifencei, ['d'] = map_op_zicsr }
 
-if riscv32 then for _, map in orderedPairs(list_map_op_rv32) do
+if riscv32 then for _, map in opairs(list_map_op_rv32) do
   for k, v in pairs(map) do map_op[k] = v end
   end
 end
-if riscv64 then for _, map in orderedPairs(list_map_op_rv64) do
+if riscv64 then for _, map in opairs(list_map_op_rv64) do
   for k, v in pairs(map) do map_op[k] = v end
   end
 end
