@@ -2340,8 +2340,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  beqz TMP1, >4
     |  fmv.d.x FTMP0, CARG1
     |  fmv.d.x FTMP2, CARG2
-    |  addw TMP2, TMP2, TMP3
     |3:  // RA and RD are both numbers.
+    |  addw TMP2, TMP2, TMP3
     if (op == BC_ISLT || op == BC_ISGE) {
       |  flt.d TMP3, FTMP0, FTMP2
     } else {
