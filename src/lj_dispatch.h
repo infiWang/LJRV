@@ -66,6 +66,22 @@ GOTDEF(GOTENUM)
 };
 #endif
 
+#if LJ_TARGET_RISCV64
+/* Need our own global offset table to wrap RISC-V PIC extern calls */
+
+#define GOTDEF(_) \
+  _(floor) _(ceil) _(trunc) _(log) _(log10) _(exp) _(sin) _(cos) _(tan) \
+  _(asin) _(acos) _(atan) _(sinh) _(cosh) _(tanh) _(frexp) _(modf) _(atan2) \
+  _(pow) _(fmod) _(ldexp)
+
+enum {
+#define GOTENUM(name) LJ_GOT_##name,
+GOTDEF(GOTENUM)
+#undef GOTENUM
+  LJ_GOT__MAX
+};
+#endif
+
 /* Type of hot counter. Must match the code in the assembler VM. */
 /* 16 bits are sufficient. Only 0.0015% overhead with maximum slot penalty. */
 typedef uint16_t HotCount;
@@ -93,7 +109,7 @@ typedef struct GG_State {
   /* Make g reachable via K12 encoded DISPATCH-relative addressing. */
   uint8_t align1[(16-sizeof(global_State))&15];
 #endif
-#if LJ_TARGET_MIPS
+#if LJ_TARGET_MIPS || LJ_TARGET_RISCV64
   ASMFunction got[LJ_GOT__MAX];		/* Global offset table. */
 #endif
 #if LJ_HASJIT

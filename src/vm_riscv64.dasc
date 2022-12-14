@@ -51,7 +51,7 @@
 |.define TMP4,		x27
 |
 |// RISC-V lp64d calling convention.
-// |.define CFUNCADDR,	x5
+|.define CFUNCADDR,	x5
 |.define CARG1,		x10
 |.define CARG2,		x11
 |.define CARG3,		x12
@@ -523,6 +523,13 @@
 |
 #define PC2PROTO(field)  ((int)offsetof(GCproto, field)-(int)sizeof(GCproto))
 |
+|.macro load_got, func
+|  ld CFUNCADDR, DISPATCH_GOT(func)(DISPATCH)
+|.endmacro
+|// JAL should be enough for internal jumps.
+|// .macro call_intern, func; jalr CFUNCADDR; .endmacro
+|.macro call_extern; jalr CFUNCADDR; .endmacro
+|.macro jmp_extern; jr CFUNCADDR; .endmacro
 |
 |// Set current VM state. Uses TMP0.
 |.macro li_vmstate, st; liw TMP0, ~LJ_VMST_..st; .endmacro
@@ -1746,13 +1753,15 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |.macro math_extern, func
   |  .ffunc_n math_ .. func
-  |  jal extern func
+  |  load_got func
+  |  call_extern
   |  j ->fff_resn
   |.endmacro
   |
   |.macro math_extern2, func
   |  .ffunc_nn math_ .. func
-  |  jal extern func
+  |  load_got func
+  |  call_extern
   |  j ->fff_resn
   |.endmacro
   |
@@ -1768,8 +1777,9 @@ static void build_subroutines(BuildCtx *ctx)
   |   ld CARG1, 0(BASE)
   |   fld FARG1, 0(BASE)
   |  bxne NARGS8:RC, TMP1, ->fff_fallback		// Need exactly 1 argument.
+  |  load_got log
   |  checknum CARG1, ->fff_fallback
-  |  jal extern log
+  |  call_extern
   |  j ->fff_resn
   |
   |  math_extern log10
@@ -1790,15 +1800,17 @@ static void build_subroutines(BuildCtx *ctx)
   |.ffunc_2 math_ldexp
   |  checknum CARG1, ->fff_fallback
   |  checkint CARG2, ->fff_fallback
+  |  load_got ldexp			// (double x, int exp)
   |   fld FARG1, 0(BASE)
   |   lw CARG1, 8(BASE)
-  |  jal extern ldexp			// (double x, int exp)
+  |  call_extern
   |  j ->fff_resn
   |
   |.ffunc_n math_frexp
+  |  load_got frexp
   |   ld PC, FRAME_PC(BASE)
   |  addxi CARG1, DISPATCH, DISPATCH_GL(tmptv)
-  |  jal extern frexp
+  |  call_extern
   |    lxw TMP1, DISPATCH, DISPATCH_GL(tmptv)
   |   fcvt.d.w FARG2, TMP1
   |  fsd FRET1, -16(BASE)
@@ -1807,9 +1819,10 @@ static void build_subroutines(BuildCtx *ctx)
   |  j ->fff_res
   |
   |.ffunc_n math_modf
+  |  load_got modf
   |   addi CARG1, BASE, -16
   |   ld PC, FRAME_PC(BASE)
-  |  jal extern modf
+  |  call_extern
   |  fsd FRET1, -8(BASE)
   |   li RD, (2+1)*8
   |  j ->fff_res
@@ -2845,10 +2858,11 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   sltiu TMP1, TMP1, LJ_TISNUM
     |  and TMP0, TMP0, TMP1
     |   add RA, BASE, RA
+    |  load_got pow
     |  bxeqz TMP0, ->vmeta_arith
     |  fld FARG1, 0(RB)
     |  fld FARG2, 0(RC)
-    |  jal extern pow
+    |  call_extern
     |  ins_next1
     |  fsd FRET1, 0(RA)
     |  ins_next2
