@@ -411,7 +411,7 @@
 |
 |//-----------------------------------------------------------------------
 |
-|// Endian-specific defines. LoongArch is little endian.
+|// Endian-specific defines. RISC-V only has little endian ABI for now.
 |.define OFS_RD,	2
 |.define OFS_RA,	1
 |.define OFS_OP,	0
