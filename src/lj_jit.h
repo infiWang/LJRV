@@ -67,6 +67,17 @@
 #endif
 #endif
 
+#elif LJ_TARGET_RISCV64
+
+#define JIT_F_RVC        (JIT_F_CPU << 0)
+#define JIT_F_RVB        (JIT_F_CPU << 1) /* Ask too much? */
+// #define JIT_F_RVZbb        (JIT_F_CPU << 1) /* What about zext.w? */
+// #define JIT_F_RVZbkb        (JIT_F_CPU << 1) /* Appropriate? */
+// #define JIT_F_RVZba        (JIT_F_CPU << 1) /* Combine with Zbb for zext.w */
+// #define JIT_F_RVZbb        (JIT_F_CPU << 2)
+
+#define JIT_F_CPUSTRING		"\000RV64G\010RV64GC\020RV64GB\030RV64GCB"
+
 #else
 
 #define JIT_F_CPUSTRING		""
