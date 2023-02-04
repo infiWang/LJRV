@@ -17,7 +17,7 @@
   _(X0) _(RA) _(SP) _(X3) _(X4) _(X5) _(X6) _(X7) \
   _(X8) _(X9) _(X10) _(X11) _(X12) _(X13) _(X14) _(X15) \
   _(X16) _(X17) _(X18) _(X19) _(X20) _(X21) _(X22) _(X23) \
-  _(X24) _(X25) _(X26) _(X27) _(X28) _(X29) _(X30) _(X31) _(PC)
+  _(X24) _(X25) _(X26) _(X27) _(X28) _(X29) _(X30) _(X31)
 #endif
 #if LJ_SOFTFP
 #define FPRDEF(_)
@@ -44,8 +44,8 @@ enum {
   /* Calling conventions. */
   RID_RET = RID_X10,
 #if LJ_LE
-  RID_RETHI = RID_R11,
-  RID_RETLO = RID_R10,
+  RID_RETHI = RID_X11,
+  RID_RETLO = RID_X10,
 #else
   RID_RETHI = RID_X10,
   RID_RETLO = RID_X11,
@@ -55,12 +55,14 @@ enum {
 #else
   RID_FPRET = RID_F10,
 #endif
+  RID_CFUNCADDR = RID_X5,
 
   /* These definitions must match with the *.dasc file(s): */
   RID_BASE = RID_X18,		/* Interpreter BASE. */
   RID_LPC = RID_X20,		/* Interpreter PC. */
   RID_DISPATCH = RID_X21,	/* Interpreter DISPATCH table. */
   RID_LREG = RID_X22,		/* Interpreter L. */
+//   TODO: JGL -> GL migration. Referring to arm and arm64.
   RID_JGL = RID_X23,		/* On-trace: global_State + 32768. */
 
   /* Register ranges [min, max) and number of registers. */
@@ -77,14 +79,15 @@ enum {
 };
 
 #define RID_NUM_KREF		RID_NUM_GPR
-#define RID_MIN_KREF		RID_R0
+#define RID_MIN_KREF		RID_X0
 
 /* -- Register sets ------------------------------------------------------- */
 
-/* Make use of all registers, except ZERO, TMP, SP, GP, TP and JGL. */
+/* Make use of all registers, except ZERO, TMP, SP, GP, TP, CFUNCADDR and JGL. */
 #define RSET_FIXED \
   (RID2RSET(RID_ZERO)|RID2RSET(RID_TMP)|RID2RSET(RID_SP)|\
-   RID2RSET(RID_GP)|RID2RSET(RID_TP)|RID2RSET(RID_JGL))
+   RID2RSET(RID_GP)|RID2RSET(RID_TP)|RID2RSET(RID_CFUNCADDR)|RID2RSET(RID_JGL))
+// TODO: Fix x5 is hacky, drop it. Referring to arm and arm64 (JGL -> GL).
 #define RSET_GPR	(RSET_RANGE(RID_MIN_GPR, RID_MAX_GPR) - RSET_FIXED)
 #if LJ_SOFTFP
 #define RSET_FPR	0
@@ -96,8 +99,11 @@ enum {
 #define RSET_INIT	RSET_ALL
 
 #define RSET_SCRATCH_GPR \
-  (RID2RSET(RID_R1)|RSET_RANGE(RID_R5, RID_R7)|\
-   RSET_RANGE(RID_R10, RID_R17)|RSET_RANGE(RID_R28, RID_R31))
+  (RID2RSET(RID_X1)|RSET_RANGE(RID_X6, RID_X7)|\
+   RSET_RANGE(RID_X10, RID_X17)|RSET_RANGE(RID_X28, RID_X31))
+//    TODO: drop fixed x5
+//   (RID2RSET(RID_X1)|RSET_RANGE(RID_X5, RID_X7)|\
+//    RSET_RANGE(RID_X10, RID_X17)|RSET_RANGE(RID_X28, RID_X31))
 
 #if LJ_SOFTFP
 #define RSET_SCRATCH_FPR	0
@@ -108,8 +114,8 @@ enum {
 #endif
 #define RSET_SCRATCH		(RSET_SCRATCH_GPR|RSET_SCRATCH_FPR)
 
-#define REGARG_FIRSTGPR		RID_R10
-#define REGARG_LASTGPR		RID_R17
+#define REGARG_FIRSTGPR		RID_X10
+#define REGARG_LASTGPR		RID_X17
 #define REGARG_NUMGPR		8
 
 #if LJ_ABI_SOFTFP
@@ -159,7 +165,7 @@ typedef struct {
 /* Return the address of a per-trace exit stub. */
 static LJ_AINLINE uint32_t *exitstub_trace_addr_(uint32_t *p)
 {
-  while (*p == 0x00000000) p++;  /* Skip MIPSI_NOP. */
+  while (*p == 0x00000013) p++;  /* Skip RISCVI_NOP. */
   return p;
 }
 /* Avoid dependence on lj_jit.h if only including lj_target.h. */
@@ -169,20 +175,37 @@ static LJ_AINLINE uint32_t *exitstub_trace_addr_(uint32_t *p)
 /* -- Instructions -------------------------------------------------------- */
 
 /* Instruction fields. */
-#define RISCVF_RD(d)	((d) << 7)
-#define RISCVF_RS1(r)	((r) << 15)
-#define RISCVF_RS2(r)	((r) << 20)
+#define RISCVF_D(d)	(((d)&31) << 7)
+#define RISCVF_S1(r)	(((r)&31) << 15)
+#define RISCVF_S2(r)	(((r)&31) << 20)
+#define RISCVF_S3(r)	(((r)&31) << 27)
+#define RISCVF_FUNCT2(f)	(((f)&3) << 25)
+#define RISCVF_FUNCT3(f)	(((f)&3) << 12)
+#define RISCVF_FUNCT7(f)	(((f)&3) << 25)
+#define RISCVF_SHAMT(s)	((s) << 20)
+#define RISCVF_RM(m)	(((m)&7) << 12)
+#define RISCVF_IMMI(i)	((i) << 20)
+#define RISCVF_IMMS(i)	(((i)&0xfe0) << 20 | ((i)&0x1f) << 7)
+#define RISCVF_IMMB(i)	(((i)&0x1000) << 19 | ((i)&0x800) << 4 | ((i)&0x7e0) << 20 | ((i)&0x1e) << 7)
+#define RISCVF_IMMU(i)	(((i)&0xfffff) << 12)
+#define RISCVF_IMMJ(i)	(((i)&0x100000) << 11 | ((i)&0xff000) | ((i)&0x800) << 9 | ((i)&0x7fe) << 20)
+
+/* Encode helpers. */
+#define RISCVF_W_HI(w)  ((w) - ((((w)&0xfff)^0x800) - 0x800))
+#define RISCVF_W_LO(w)  ((w)&0xfff)
+#define RISCVF_HI(i)	((RISCVF_W_HI(i) >> 12) & 0xfffff)
+#define RISCVF_LO(i)	RISCVF_W_LO(i)
+
+/* Check for valid field range. */
+#define RISCVF_SIMM_OK(x, b)	((((x) + (1 << (b-1))) >> (b)) == 0)
 
 typedef enum RISCVIns {
 
-  /* Type U */
+  /* --- RVI --- */
   RISCVI_LUI = 0x00000037,
   RISCVI_AUIPC = 0x00000017,
 
-  /* Type J */
   RISCVI_JAL = 0x0000006f,
-
-  /* Integer instructions. */
   RISCVI_JALR = 0x00000067,
 
   RISCVI_ADDI = 0x00000013,
@@ -207,7 +230,6 @@ typedef enum RISCVIns {
   RISCVI_OR = 0x00006033,
   RISCVI_AND = 0x00007033,
 
-  /* Load/store instructions. */
   RISCVI_LB = 0x00000003,
   RISCVI_LH = 0x00001003,
   RISCVI_LW = 0x00002003,
@@ -217,11 +239,6 @@ typedef enum RISCVIns {
   RISCVI_SH = 0x00001023,
   RISCVI_SW = 0x00002023,
 
-#if LJ_TARGET_RISCV64
-  RISCVI_LD = 0x00003003,
-  RISCVI_SD = 0x00003023,
-#endif
-  /* Branch instructions */
   RISCVI_BEQ = 0x00000063,
   RISCVI_BNE = 0x00001063,
   RISCVI_BLT = 0x00004063,
@@ -229,11 +246,149 @@ typedef enum RISCVIns {
   RISCVI_BLTU = 0x00006063,
   RISCVI_BGEU = 0x00007063,
 
-  /* special instructions */
-  RISCVI_FENCE = 0x0000000f,
-  RISCVI_FENCE_I = 0x0000100f,
   RISCVI_ECALL = 0x00000073,
   RISCVI_EBREAK = 0x00100073,
+
+  RISCVI_NOP = 0x00000013,
+  RISCVI_MV = 0x00000013,
+  RISCVI_NOT = 0xfff04013,
+  RISCVI_NEG = 0x40000033,
+  RISCVI_RET = 0x00008067,
+
+#if LJ_TARGET_RISCV64
+  RISCVI_LWU = 0x00007003,
+  RISCVI_LD = 0x00003003,
+  RISCVI_SD = 0x00003023,
+
+  RISCVI_ADDIW = 0x0000001b,
+
+  RISCVI_SLLIW = 0x0000101b,
+  RISCVI_SRLIW = 0x0000501b,
+  RISCVI_SRAIW = 0x4000501b,
+
+  RISCVI_ADDW = 0x0000003b,
+  RISCVI_SUBW = 0x4000003b,
+  RISCVI_SLLW = 0x0000103b,
+  RISCVI_SRLW = 0x0000503b,
+  RISCVI_SRAW = 0x4000503b,
+
+  RISCVI_NEGW = 0x4000003b,
+  RISCVI_SEXT_W = 0x0000001b,
+#endif
+
+  /* --- RVM --- */
+  RISCVI_MUL = 0x02000033,
+  RISCVI_MULH = 0x02001033,
+  RISCVI_MULHSU = 0x02002033,
+  RISCVI_MULHU = 0x02003033,
+  RISCVI_DIV = 0x02004033,
+  RISCVI_DIVU = 0x02005033,
+  RISCVI_REM = 0x02006033,
+  RISCVI_REMU = 0x02007033,
+#if LJ_TARGET_RISCV64
+  RISCVI_MULW = 0x0200003b,
+  RISCVI_DIVW = 0x0200403b,
+  RISCVI_DIVUW = 0x0200503b,
+  RISCVI_REMW = 0x0200603b,
+  RISCVI_REMUW = 0x0200703b,
+#endif
+
+  /* --- RVF --- */
+  RISCVI_FLW = 0x00002007,
+  RISCVI_FSW = 0x00002027,
+
+  RISCVI_FMADD_S = 0x00000043,
+  RISCVI_FMSUB_S = 0x00000047,
+  RISCVI_FNMSUB_S = 0x0000004b,
+  RISCVI_FNMADD_S = 0x0000004f,
+
+  RISCVI_FADD_S = 0x00000053,
+  RISCVI_FSUB_S = 0x08000053,
+  RISCVI_FMUL_S = 0x10000053,
+  RISCVI_FDIV_S = 0x18000053,
+  RISCVI_FSQRT_S = 0x58000053,
+
+  RISCVI_FSGNJ_S = 0x20000053,
+  RISCVI_FSGNJN_S = 0x20001053,
+  RISCVI_FSGNJX_S = 0x20002053,
+
+  RISCVI_FMIN_S = 0x28000053,
+  RISCVI_FMAX_S = 0x28001053,
+
+  RISCVI_FCVT_W_S = 0xc0000053,
+  RISCVI_FCVT_WU_S = 0xc0100053,
+
+  RISCVI_FMV_X_W = 0xe0000053,
+
+  RISCVI_FEQ_S = 0xa0002053,
+  RISCVI_FLT_S = 0xa0001053,
+  RISCVI_FLE_S = 0xa0000053,
+
+  RISCVI_FCLASS_S = 0xe0001053,
+
+  RISCVI_FCVT_S_W = 0xd0000053,
+  RISCVI_FCVT_S_WU = 0xd0100053,
+  RISCVI_FMV_W_X = 0xf0000033,
+#if LJ_TARGET_RISCV64
+  RISCVI_FCVT_L_S = 0xc0200053,
+  RISCVI_FCVT_LU_S = 0xc0300053,
+  RISCVI_FCVT_S_L = 0xd0200053,
+  RISCVI_FCVT_S_LU = 0xd0300053,
+#endif
+
+  /* --- RVD --- */
+  RISCVI_FLD = 0x00003007,
+  RISCVI_FSD = 0x00003027,
+
+  RISCVI_FMADD_D = 0x02000043,
+  RISCVI_FMSUB_D = 0x02000047,
+  RISCVI_FNMSUB_D = 0x0200004b,
+  RISCVI_FNMADD_D = 0x0200004f,
+
+  RISCVI_FADD_D = 0x02000053,
+  RISCVI_FSUB_D = 0x0a000053,
+  RISCVI_FMUL_D = 0x12000053,
+  RISCVI_FDIV_D = 0x1a000053,
+  RISCVI_FSQRT_D = 0x5a000053,
+
+  RISCVI_FSGNJ_D = 0x22000053,
+  RISCVI_FSGNJN_D = 0x22001053,
+  RISCVI_FSGNJX_D = 0x22002053,
+
+  RISCVI_FMIN_D = 0x2a000053,
+  RISCVI_FMAX_D = 0x2a001053,
+
+  RISCVI_FCVT_S_D = 0x40100053,
+  RISCVI_FCVT_D_S = 0x42000053,
+
+  RISCVI_FEQ_D = 0xa2002053,
+  RISCVI_FLT_D = 0xa2001053,
+  RISCVI_FLE_D = 0xa2000053,
+
+  RISCVI_FCLASS_D = 0xe2001053,
+
+  RISCVI_FCVT_W_D = 0xc2000053,
+  RISCVI_FCVT_WU_D = 0xc2100053,
+  RISCVI_FCVT_D_W = 0xd2000053,
+  RISCVI_FCVT_D_WU = 0xd2100053,
+
+  RISCVI_FMV_D = 0x22000053,
+  RISCVI_FNEG_D = 0x22001053,
+  RISCVI_FABS_D = 0x22002053,
+#if LJ_TARGET_RISCV64
+  RISCVI_FCVT_L_D = 0xc2200053,
+  RISCVI_FCVT_LU_D = 0xc2300053,
+  RISCVI_FMV_X_D = 0xe2000053,
+  RISCVI_FCVT_D_L = 0xd2200053,
+  RISCVI_FCVT_D_LU = 0xd2300053,
+  RISCVI_FMV_D_X = 0xf2000053,
+#endif
+
+  /* --- Zifencei --- */
+  RISCVI_FENCE = 0x0000000f,
+  RISCVI_FENCE_I = 0x0000100f,
+
+  /* --- Zicsr --- */
   RISCVI_CSRRW = 0x00001073,
   RISCVI_CSRRS = 0x00002073,
   RISCVI_CSRRC = 0x00003073,
@@ -241,8 +396,69 @@ typedef enum RISCVIns {
   RISCVI_CSRRSI = 0x00006073,
   RISCVI_CSRRCI = 0x00007073,
 
+  /* --- RVB --- */
+  /* Zba */
+  RISCVI_SH1ADD = 0x20002033,
+  RISCVI_SH2ADD = 0x20004033,
+  RISCVI_SH3ADD = 0x20006033,
+#if LJ_TARGET_RISCV64
+  RISCVI_ADD_UW = 0x0800003b,
 
+  RISCVI_SH1ADD_UW = 0x2000203b,
+  RISCVI_SH2ADD_UW = 0x2000403b,
+  RISCVI_SH3ADD_UW = 0x2000603b,
 
+  RISCVI_SLLI_UW = 0x0800101b,
+
+  RISCVI_ZEXT_W = 0x0800003b,
+#endif
+  /* Zbb */
+  RISCVI_ANDN = 0x40007033,
+  RISCVI_ORN = 0x40006033,
+  RISCVI_XNOR = 0x40004033,
+
+  RISCVI_CLZ = 0x60001013,
+  RISCVI_CTZ = 0x60101013,
+
+  RISCVI_CPOP = 0x60201013,
+
+  RISCVI_MAX = 0x0a006033,
+  RISCVI_MAXU = 0x0a007033,
+  RISCVI_MIN = 0x0a004033,
+  RISCVI_MINU = 0x0a005033,
+
+  RISCVI_SEXT_B = 0x60401013,
+  RISCVI_SEXT_H = 0x60501013,
+#if LJ_TARGET_RISCV32
+  RISCVI_ZEXT_H = 0x08004033,
+#elif LJ_TARGET_RISCV64
+  RISCVI_ZEXT_H = 0x0800403b,
+#endif
+
+  RISCVI_ROL = 0x60001033,
+  RISCVI_ROR = 0x60005033,
+  RISCVI_RORI = 0x60005013,
+
+  RISCVI_ORC_B = 0x28705013,
+
+#if LJ_TARGET_RISCV32
+  RISCVI_REV8 = 0x69805013,
+#elif LJ_TARGET_RISCV64
+  RISCVI_REV8 = 0x6b805013,
+
+  RISCVI_CLZW = 0x6000101b,
+  RISCVI_CTZW = 0x6010101b,
+
+  RISCVI_CPOPW = 0x6020101b,
+
+  RISCVI_ROLW = 0x6000103b,
+  RISCVI_RORIW = 0x6000501b,
+  RISCVI_RORW = 0x6000503b,
+#endif
+  /* NYI: Zbc, Zbs */
+  /* TBD: Zbk* */
+
+  /* TBD: RVV?, RVP?, RVJ? */
 } RISCVIns;
 
 #endif
