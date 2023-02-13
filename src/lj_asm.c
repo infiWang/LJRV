@@ -185,6 +185,8 @@ IRFLDEF(FLOFS)
 #include "lj_emit_ppc.h"
 #elif LJ_TARGET_MIPS
 #include "lj_emit_mips.h"
+#elif LJ_TARGET_RISCV64
+#include "lj_emit_riscv.h"
 #else
 #error "Missing instruction emitter for target CPU"
 #endif
