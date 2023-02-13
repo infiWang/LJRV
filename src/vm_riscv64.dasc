@@ -252,12 +252,12 @@
 |.endmacro
 |
 |.macro lxi, a, b
-|  lui a, b
+|  lui a, (b)&0xfffff
 |  srai a, a, 12
 |.endmacro
 |
 |.macro lzi, a, b
-|  lui a, b
+|  lui a, (b)&0xfffff
 |  srli a, a, 12
 |.endmacro
 |
@@ -320,23 +320,23 @@
 |.endmacro
 |
 |.macro roli, a, b, c
-|  li x28, c
-|  rol a, b, x28
+|  li x30, (c)&0xfffff
+|  rol a, b, x30
 |.endmacro
 |
 |.macro rori, a, b, c
-|  li x28, c
-|  ror a, b, x28
+|  li x30, (c)&0xfffff
+|  ror a, b, x30
 |.endmacro
 |
-|.macro rolwi, a, b, c
-|  li x28, c
-|  rolw a, b, x28
+|.macro roliw, a, b, c
+|  li x30, (c)&0xfffff
+|  rolw a, b, x30
 |.endmacro
 |
-|.macro rorwi, a, b, c
-|  li x28, c
-|  rorw a, b, x28
+|.macro roriw, a, b, c
+|  li x30, (c)&0xfffff
+|  rorw a, b, x30
 |.endmacro
 |
 |.macro bfextri, a, b, c, d
