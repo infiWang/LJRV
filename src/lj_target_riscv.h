@@ -60,10 +60,8 @@ enum {
   /* These definitions must match with the *.dasc file(s): */
   RID_BASE = RID_X18,		/* Interpreter BASE. */
   RID_LPC = RID_X20,		/* Interpreter PC. */
-  RID_DISPATCH = RID_X21,	/* Interpreter DISPATCH table. */
-  RID_LREG = RID_X22,		/* Interpreter L. */
-//   TODO: JGL -> GL migration. Referring to arm and arm64.
-  RID_JGL = RID_X23,		/* On-trace: global_State + 32768. */
+  RID_GL = RID_X21,		/* Interpreter GL. */
+  RID_LREG = RID_X23,		/* Interpreter L. */
 
   /* Register ranges [min, max) and number of registers. */
   RID_MIN_GPR = RID_X0,
@@ -83,10 +81,10 @@ enum {
 
 /* -- Register sets ------------------------------------------------------- */
 
-/* Make use of all registers, except ZERO, TMP, SP, GP, TP, CFUNCADDR and JGL. */
+/* Make use of all registers, except ZERO, TMP, SP, GP, TP, CFUNCADDR and GL. */
 #define RSET_FIXED \
   (RID2RSET(RID_ZERO)|RID2RSET(RID_TMP)|RID2RSET(RID_SP)|\
-   RID2RSET(RID_GP)|RID2RSET(RID_TP)|RID2RSET(RID_CFUNCADDR)|RID2RSET(RID_JGL))
+   RID2RSET(RID_GP)|RID2RSET(RID_TP)|RID2RSET(RID_CFUNCADDR)|RID2RSET(RID_GL))
 // TODO: Fix x5 is hacky, drop it. Referring to arm and arm64 (JGL -> GL).
 #define RSET_GPR	(RSET_RANGE(RID_MIN_GPR, RID_MAX_GPR) - RSET_FIXED)
 #if LJ_SOFTFP
