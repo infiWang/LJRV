@@ -3981,7 +3981,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   lui TMP1, ((LJ_KEYINDEX - (((LJ_KEYINDEX & 0xfff)^0x800) - 0x800)) >> 12) & 0xfffff
     |  bnez TMP3, >5
     |  add PC, TMP0, TMP2
-    |  addi TMP1, TMP1, (LJ_KEYINDEX & 0xfff)
+    |  addi TMP1, TMP1, (((LJ_KEYINDEX & 0xfff)^0x800) - 0x800)
     |  slli TMP1, TMP1, 32
     |  sd TMP1, -8(RA)
     |1:
