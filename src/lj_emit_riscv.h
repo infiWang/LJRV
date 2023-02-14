@@ -73,6 +73,10 @@ static void emit_j(ASMState *as, RISCVIns riscvi, Reg rd, int32_t i)
   *--as->mcp = riscvi | RISCVF_RD(rd) | RISCVF_IMMJ(i & 0x1fffffe);
 }
 
+static Reg ra_allock(ASMState *as, intptr_t k, RegSet allow);
+static void ra_allockreg(ASMState *as, intptr_t k, Reg r);
+static Reg ra_scratch(ASMState *as, RegSet allow);
+
 static void emit_lso(ASMState *as, RISCVIns riscvi, Reg dest, Reg src, int64_t ofs)
 {
   lj_assertA(checki12(ofs), "load/store offset %d out of range", ofs);
@@ -182,10 +186,6 @@ static void emit_ext(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1)
   }
 }
 
-static Reg ra_allock(ASMState *as, intptr_t k, RegSet allow);
-static void ra_allockreg(ASMState *as, intptr_t k, Reg r);
-static Reg ra_scratch(ASMState *as, RegSet allow);
-
 static void emit_loadk12(ASMState *as, Reg rd, int32_t i)
 {
   emit_dsi(as, RISCVI_ADDI, rd, rd, i);
@@ -200,7 +200,7 @@ static void emit_loadk20(ASMState *as, Reg rd, int32_t i)
 static void emit_loadk32(ASMState *as, Reg rd, int32_t i)
 {
   if (checki12(i)) {
-    emit_di12(as, rd, i);
+    emit_loadk12(as, rd, i);
   } else {
     emit_dsi(as, RISCVI_ADDI, rd, rd, RISCVF_LO(i));
     emit_du(as, RISCVI_LUI, rd, RISCVF_HI(i));
@@ -300,9 +300,9 @@ static void emit_jmp(ASMState *as, MCode *target)
     *--p = RISCVI_NOP;
     *--p = RISCVI_JAL | RISCVF_IMMJ(delta);
   } else {
-    ra_scratch(as, RID_CFUNCADDR);
-    *--p = RISCVI_JALR | RISCVF_S1(RID_CFUNCADDR) | RISCVF_IMMI(RISCVI_LO(delta));
-    *--p = RISCVI_AUIPC | RISCVF_D(RID_CFUNCADDR) | RISCVF_IMMU(RISCVI_HI(delta));
+    Reg cfa = ra_scratch(as, RID2RSET(RID_CFUNCADDR));
+    *--p = RISCVI_JALR | RISCVF_S1(cfa) | RISCVF_IMMI(RISCVI_LO(delta));
+    *--p = RISCVI_AUIPC | RISCVF_D(cfa) | RISCVF_IMMU(RISCVI_HI(delta));
   }
 }
 
