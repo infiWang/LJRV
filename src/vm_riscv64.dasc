@@ -1175,8 +1175,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv MULTRES, INS
   |  jal extern lj_meta_for	// (lua_State *L, TValue *base)
   |.if JIT
-  |  decode_OP TMP0, MULTRES
-  |  mv TMP1, BC_JFORI
+  |  decode_OP8 TMP0, MULTRES
+  |  li TMP1, BC_JFORI
   |.endif
   |  decode_RA8 RA, MULTRES
   |   decode_RD8 RD, MULTRES
@@ -2259,7 +2259,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  // RA = resultptr, RB = meta base
   |  lw INS, -4(PC)
   |  ld TRACE:TMP2, -40(RB)		// Save previous trace.
-  |  decode_RA RC, INS
+  |  decode_RA8 RC, INS
   |  addi TMP1, MULTRES, -8
   |  cleartp TRACE:TMP2
   |  add RC, BASE, RC			// Call base.
@@ -2272,8 +2272,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi RC, RC, 8
   |  bnez TMP1, <1
   |2:
-  |  decode_RA RA, INS
-  |  decode_RB RB, INS
+  |  decode_RA8 RA, INS
+  |  decode_RB8 RB, INS
   |  add RA, RA, RB
   |  add RA, BASE, RA
   |3:
@@ -2323,8 +2323,8 @@ static void build_subroutines(BuildCtx *ctx)
   |.macro savex_, a, b
   |  fsd f..a, a*8(sp)
   |  fsd f..b, b*8(sp)
-  |  sd r..a, 32*8+a*8(sp)
-  |  sd r..b, 32*8+b*8(sp)
+  |  sd x..a, 32*8+a*8(sp)
+  |  sd x..b, 32*8+b*8(sp)
   |.endmacro
   |
   |->vm_exit_handler:
@@ -2401,13 +2401,13 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi PC, PC, 4
   |  // Assumes TISNIL == ~LJ_VMST_INTERP == -1
   |  sw TISNIL, GL->vmstate
-  |  decode_OP TMP1, INS
+  |  decode_OP8 TMP1, INS
   |  decode_BC8b TMP1
   |  sltiu TMP2, TMP1, BC_FUNCF*8
   |  add TMP0, DISPATCH, TMP1
-  |  decode_RD RD, INS
+  |  decode_RD8 RD, INS
   |  ld TMP3, 0(TMP0)
-  |  decode_RA RA, INS
+  |  decode_RA8 RA, INS
   |  beqz TMP2, >2
   |  jr TMP3
   |2:
@@ -2419,7 +2419,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  bnez TMP0, >3			// Trace stitching continuation?
   |  // Otherwise set KBASE for Lua function below fast function.
   |  lw TMP2, -4(TMP1)
-  |  decode_RA TMP0, TMP2
+  |  decode_RA8 TMP0, TMP2
   |  sub TMP1, BASE, TMP0
   |  ld LFUNC:TMP2, -32(TMP1)
   |  cleartp LFUNC:TMP2
