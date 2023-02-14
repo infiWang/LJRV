@@ -43,7 +43,7 @@ static void emit_r4(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2, Reg
 
 static void emit_i(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_RD(rd) | RISCVF_RS1(rs1) | RISCVF_IMMI(i & 0xfff);
+  *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_S1(rs1) | RISCVF_IMMI(i & 0xfff);
 }
 
 #define emit_dsi(as, riscvi, rd, rs1, i)     emit_i(as, riscvi, rd, rs1, i)
@@ -51,33 +51,33 @@ static void emit_i(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t i)
 
 static void emit_s(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_RS1(rs1) | RISCVF_RS2(rs2) | RISCVF_IMMS(i & 0xfff);
+  *--as->mcp = riscvi | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMS(i & 0xfff);
 }
 
 #define emit_s1s2i(as, riscvi, rs1, rs2, i)  emit_s(as, riscvi, rs1, rs2, i)
 
 static void emit_b(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_RS1(rs1) | RISCVF_RS2(rs2) | RISCVF_IMMB(i & 0x1ffe);
+  *--as->mcp = riscvi | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMB(i & 0x1ffe);
 }
 
 static void emit_u(ASMState *as, RISCVIns riscvi, Reg rd, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_RD(rd) | RISCVF_IMMU(i & 0xfffff);
+  *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_IMMU(i & 0xfffff);
 }
 
 #define emit_du(as, riscvi, rd, i)           emit_u(as, riscvi, rd, i)
 
 static void emit_j(ASMState *as, RISCVIns riscvi, Reg rd, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_RD(rd) | RISCVF_IMMJ(i & 0x1fffffe);
+  *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_IMMJ(i & 0x1fffffe);
 }
 
 static Reg ra_allock(ASMState *as, intptr_t k, RegSet allow);
 static void ra_allockreg(ASMState *as, intptr_t k, Reg r);
 static Reg ra_scratch(ASMState *as, RegSet allow);
 
-static void emit_lso(ASMState *as, RISCVIns riscvi, Reg dest, Reg src, int64_t ofs)
+static void emit_lso(ASMState *as, RISCVIns riscvi, Reg dest, Reg src, int32_t ofs)
 {
   lj_assertA(checki12(ofs), "load/store offset %d out of range", ofs);
   switch (riscvi) {
@@ -86,7 +86,7 @@ static void emit_lso(ASMState *as, RISCVIns riscvi, Reg dest, Reg src, int64_t o
       emit_dsi(as, riscvi, dest, src, ofs);
       break;
     case RISCVI_SD: case RISCVI_SW: case RISCVI_SH: case RISCVI_SB:
-      emit_s1s2i(as, riscvi, dest, src, i);
+      emit_s1s2i(as, riscvi, dest, src, ofs);
       break;
     default: lj_assertA(0, "invalid lso"); break;
   }
@@ -128,16 +128,16 @@ static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2, Re
     Reg tmp = ra_scratch(as, rset_exclude(allow, rd));
     switch (riscvi) {
       case RISCVI_ROL:
-        ai = RISCVI_SLL, bi = RISCVI_SRL;
+        sai = RISCVI_SLL, sbi = RISCVI_SRL;
         break;
       case RISCVI_ROR:
-        ai = RISCVI_SRL,  bi = RISCVI_SLL;
+        sai = RISCVI_SRL, sbi = RISCVI_SLL;
         break;
       case RISCVI_ROLW:
-        ai = RISCVI_SLLW, bi = RISCVI_SRLW;
+        sai = RISCVI_SLLW, sbi = RISCVI_SRLW;
         break;
       case RISCVI_RORW:
-        ai = RISCVI_SRLW, bi = RISCVI_SLLW;
+        sai = RISCVI_SRLW, sbi = RISCVI_SLLW;
         break;
       default:
         lj_assertA(0, "invalid rot op");
@@ -166,7 +166,7 @@ static void emit_ext(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1)
         sli = RISCVI_SLLI, sri = RISCVI_SRLI;
         shamt = 48;
         break;
-      case RISCV_ZEXT_W:
+      case RISCVI_ZEXT_W:
         sli = RISCVI_SLLI, sri = RISCVI_SRLI;
         shamt = 32;
         break;
@@ -228,7 +228,7 @@ static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
     emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
     emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 21) & 0x7ff);
     emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
-    emit_loadk32(as, r, r, (u64 >> 32) & 0xffffffff);
+    emit_loadk32(as, r, (u64 >> 32) & 0xffffffff);
   }
 }
 
@@ -253,7 +253,7 @@ static void emit_loadk64(ASMState *as, Reg r, IRIns *ir)
 }
 
 /* Get/set global_State fields. */
-static void emit_lsglptr(ASMState *as, RISCVIns riscvi, Reg r, int32_t ofs, RegSet allow)
+static void emit_lsglptr(ASMState *as, RISCVIns riscvi, Reg r, int32_t ofs)
 {
   emit_lso(as, riscvi, r, RID_GL, ofs);
 }
@@ -337,9 +337,9 @@ static void emit_movrr(ASMState *as, IRIns *ir, Reg dst, Reg src)
   if (src < RID_MAX_GPR && dst < RID_MAX_GPR)
     emit_mv(as, dst, src);
   else if (src < RID_MAX_GPR)
-    emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_D_X : RISCVI_FMV_S_X, dst, src, 0);
+    emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_D_X : RISCVI_FMV_W_X, dst, src, 0);
   else if (dst < RID_MAX_GPR)
-    emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_X_D : RISCVI_FMV_X_S, dst, src, 0);
+    emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_X_D : RISCVI_FMV_X_W, dst, src, 0);
   else
     emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_D : RISCVI_FMV_S, dst, src, 0);
 }
