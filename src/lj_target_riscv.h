@@ -192,6 +192,10 @@ static LJ_AINLINE uint32_t *exitstub_trace_addr_(uint32_t *p)
 
 /* Check for valid field range. */
 #define RISCVF_SIMM_OK(x, b)	((((x) + (1 << (b-1))) >> (b)) == 0)
+#define checki12(i)		RISCVF_SIMM_OK(i, 12)
+#define checki13(i)		RISCVF_SIMM_OK(i, 13)
+#define checki20(i)		RISCVF_SIMM_OK(i, 20)
+#define checki21(i)		RISCVF_SIMM_OK(i, 21)
 
 typedef enum RISCVIns {
 
@@ -248,6 +252,7 @@ typedef enum RISCVIns {
   RISCVI_NOT = 0xfff04013,
   RISCVI_NEG = 0x40000033,
   RISCVI_RET = 0x00008067,
+  RISCVI_ZEXT_B = 0x0ff07013,
 
 #if LJ_TARGET_RISCV64
   RISCVI_LWU = 0x00007003,
@@ -323,6 +328,10 @@ typedef enum RISCVIns {
   RISCVI_FCVT_S_W = 0xd0000053,
   RISCVI_FCVT_S_WU = 0xd0100053,
   RISCVI_FMV_W_X = 0xf0000033,
+
+  RISCVI_FMV_S = 0x20000053,
+  RISCVI_FNEG_S = 0x20001053,
+  RISCVI_FABS_S = 0x20002053,
 #if LJ_TARGET_RISCV64
   RISCVI_FCVT_L_S = 0xc0200053,
   RISCVI_FCVT_LU_S = 0xc0300053,
