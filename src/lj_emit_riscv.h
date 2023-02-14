@@ -337,11 +337,11 @@ static void emit_movrr(ASMState *as, IRIns *ir, Reg dst, Reg src)
   if (src < RID_MAX_GPR && dst < RID_MAX_GPR)
     emit_mv(as, dst, src);
   else if (src < RID_MAX_GPR)
-    emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_D_X : RISCVI_FMV_W_X, dst, src, 0);
+    emit_ds(as, irt_isnum(ir->t) ? RISCVI_FMV_D_X : RISCVI_FMV_W_X, dst, src);
   else if (dst < RID_MAX_GPR)
-    emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_X_D : RISCVI_FMV_X_W, dst, src, 0);
+    emit_ds(as, irt_isnum(ir->t) ? RISCVI_FMV_X_D : RISCVI_FMV_X_W, dst, src);
   else
-    emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_D : RISCVI_FMV_S, dst, src, 0);
+    emit_ds1s2(as, irt_isnum(ir->t) ? RISCVI_FMV_D : RISCVI_FMV_S, dst, src, src);
 }
 
 /* Emit an arithmetic operation with a constant operand. */
