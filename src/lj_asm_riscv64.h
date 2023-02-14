@@ -3,17 +3,9 @@
 ** Copyright (C) 2005-2022 Mike Pall. See Copyright Notice in luajit.h
 */
 
-#define checki12(i)	(RISCVF_SIMM_OK(i, 12))
-#define checki13(i)	(RISCVF_SIMM_OK(i, 13))
-#define checki21(i)	(RISCVF_SIMM_OK(i, 21))
-
 /* -- Register allocator extensions --------------------------------------- */
 
 /* Allocate a register with a hint. */
-#include "lj_buf.h"
-#include "lj_ir.h"
-#include "lj_target.h"
-#include <cstddef>
 static Reg ra_hintalloc(ASMState *as, IRRef ref, Reg hint, RegSet allow)
 {
   Reg r = IR(ref)->r;
@@ -73,14 +65,17 @@ static MCode *asm_sparejump_use(MCode *mcarea, ptrdiff_t target)
   MCode *mxp = (MCode *)((char *)mcarea + ((MCLink *)mcarea)->size);
   int slot = RISCV_SPAREJUMP;
   RISCVIns tslot = RISCVI_BEQ | RISCVF_S1(RID_TMP) | RISCVF_S2(RID_TMP),
-           tlui = RISCVI_LUI | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(target)),
-           tjalr = RISCVI_JALR | RISCVF_D(RID_ZERO) | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(target));
+           tauipc, tjalr;
+          //  tauipc = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(target)),
+          //  tjalr = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(target));
   while (slot--) {
     mxp -= 2;
-    if (mxp[0] == tlui && mxp[1] == tjalr) {
+    tauipc = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(target-(intptr_t)mxp)),
+    tjalr = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(target-(intptr_t)mxp));
+    if (mxp[0] == tauipc && mxp[1] == tjalr) {
       return mxp;
     } else if (mxp[0] == tslot) {
-      mxp[0] = tlui, mxp[1] = tjalr;
+      mxp[0] = tauipc, mxp[1] = tjalr;
       return mxp;
     }
   }
@@ -94,7 +89,7 @@ static void asm_exitstub_setup(ASMState *as)
   if (as->mcp == mxp)
     --as->mcp;
   /* sw TMP, 0(sp); li TMP, traceno; jr ->vm_exit_handler;*/
-  *--mxp = RISCVI_JALR | RISCVF_D(RID_ZERO) | RISCVF_S1(RID_CFUNCADDR);
+  *--mxp = RISCVI_JALR | RISCVF_S1(RID_CFUNCADDR);
   *--mxp = RISCVI_ADDI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR)
             | RISCVF_IMMI(((uintptr_t)(void *)lj_vm_exit_handler) & 0x3ff);
   *--mxp = RISCVI_SLLI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_SHAMT(10);
@@ -105,17 +100,17 @@ static void asm_exitstub_setup(ASMState *as)
             | RISCVF_IMMI(((uintptr_t)(void *)lj_vm_exit_handler >> 21) & 0x7ff);
   *--mxp = RISCVI_SLLI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_SHAMT(11);
   *--mxp = RISCVI_ADDI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR)
-            | RISCVF_IMMI(RISCV_LO(((uintptr_t)(void *)lj_vm_exit_handler) >> 32));
+            | RISCVF_IMMI(RISCVF_LO(((uintptr_t)(void *)lj_vm_exit_handler) >> 32));
   *--mxp = RISCVI_LUI | RISCVF_D(RID_CFUNCADDR)
-            | RISCVF_IMMU(RISCV_HI(((uintptr_t)(void *)lj_vm_exit_handler) >> 32));
+            | RISCVF_IMMU(RISCVF_HI(((uintptr_t)(void *)lj_vm_exit_handler) >> 32));
   if (checki12(as->T->traceno)) {
     *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_ZERO)
               | RISCVF_IMMI(as->T->traceno);
   } else {
     *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
-              | RISCVF_IMMI(RISCV_LO(as->T->traceno));
+              | RISCVF_IMMI(RISCVF_LO(as->T->traceno));
     *--mxp = RISCVI_LUI | RISCVF_D(RID_TMP)
-              | RISCVF_IMMU(RISCV_HI(as->T->traceno));
+              | RISCVF_IMMU(RISCVF_HI(as->T->traceno));
   }
   *--mxp = RISCVI_SW | RISCVF_D(RID_TMP) | RISCVF_S1(RID_SP);
   as->mctop = mxp;
@@ -130,15 +125,15 @@ static void asm_guard(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2)
   MCode *target = asm_exitstub_addr(as);
   MCode *p = as->mcp;
   if (LJ_UNLIKELY(p == as->invmcp)) {
-    as->invmcp = NULL;
+    // as->invmcp = NULL;
     as->loopinv = 1;
     as->mcp = p;
     riscvi = riscvi ^ 0x00001000;  /* Invert cond. */
-    target = p&0xfff;  /* Patch target later in asm_loop_fixup. Mask to force one instruction. */
-    emit_ds(as, RISCVI_NOP, 0, 0, 0);
+    target = p;  /* Patch target later in asm_loop_fixup. */
+    // emit_ds(as, RISCVI_NOP, 0, 0, 0);
   }
     emit_branch(as, riscvi, rs1, rs2, target);
-    emit_di(as, RISCVI_ADDI, RID_TMP, RID_ZERO, as->snapno);  /* TODO: overflow? */
+    emit_dsi(as, RISCVI_ADDI, RID_TMP, RID_ZERO, as->snapno);  /* TODO: overflow? */
 }
 
 /* -- Operand fusion ------------------------------------------------------ */
@@ -198,19 +193,16 @@ static Reg asm_fuseahuref(ASMState *as, IRRef ref, int32_t *ofsp, RegSet allow)
     } else if (ir->o == IR_UREFC) {
       if (irref_isk(ir->op1)) {
 	GCfunc *fn = ir_kfunc(IR(ir->op1));
-	intptr_t ofs = (intptr_t)&gcref(fn->l.uvptr[(ir->op2 >> 8)])->uv.tv;
-	intptr_t jgl = (intptr_t)J2G(as->J);
-	if ((uintptr_t)(ofs-jgl) < 4096) {
-	  *ofsp = ofs-jgl-2048;
-	  return RID_JGL;
-	} else {
-	  *ofsp = (int16_t)ofs;
-	  return ra_allock(as, ofs-(int16_t)ofs, allow);
+	GCupval *uv = &gcref(fn->l.uvptr[(ir->op2 >> 8)])->uv;
+  intptr_t ofs = ((intptr_t)((uintptr_t)(&uv->tv) - (uintptr_t)&J2GG(as->J)->g));
+	if (checki12(ofs)) {
+	  *ofsp = (int32_t)ofs;
+	  return RID_GL;
 	}
       }
     } else if (ir->o == IR_TMPREF) {
-      *ofsp = (int32_t)(offsetof(global_State, tmptv)-32768);
-      return RID_JGL;
+      *ofsp = (int32_t)offsetof(global_State, tmptv);
+      return RID_GL;
     }
   }
   *ofsp = 0;
@@ -247,7 +239,7 @@ static void asm_fusexref(ASMState *as, RISCVIns riscvi, Reg rd, IRRef ref,
         Reg right, left = ra_alloc2(as, ir, allow);
         right = (left >> 8); left &= 255;
         emit_dsi(as, riscvi, rd, RID_TMP, ofs);
-        emit_ds1s2(as, RISCV_ADD, RID_TMP, left, right);
+        emit_ds1s2(as, RISCVI_ADD, RID_TMP, left, right);
         return;
       }
       ofs = ofs2;
@@ -286,7 +278,7 @@ static void asm_gencall(ASMState *as, const CCallInfo *ci, IRRef *args)
   int32_t ofs = 0;
   Reg gpr, fpr = REGARG_FIRSTFPR;
   if ((void *)ci->func)
-    emit_call(as, (void *)ci->func);
+    emit_call(as, (void *)ci->func, 1);
   for (gpr = REGARG_FIRSTGPR; gpr <= REGARG_LASTGPR; gpr++)
     as->cost[gpr] = REGCOST(~0u, ASMREF_L);
   gpr = REGARG_FIRSTGPR;
@@ -341,7 +333,7 @@ static void asm_setupresult(ASMState *as, IRIns *ir, const CCallInfo *ci)
     if (irt_isfp(ir->t)) {
       if ((ci->flags & CCI_CASTU64)) {
         Reg dest = ra_dest(as, ir, RSET_FPR);
-  emit_dsi(as, irt_isnum(ir->t) ? RISCVI_FMV_D_X : RISCVI_FMV_S_X,
+  emit_ds(as, irt_isnum(ir->t) ? RISCVI_FMV_D_X : RISCVI_FMV_W_X,
 	        dest, RID_RET);
       } else {
 	ra_destreg(as, ir, RID_FPRET);
@@ -384,13 +376,13 @@ static void asm_callx(ASMState *as, IRIns *ir)
 static void asm_callround(ASMState *as, IRIns *ir, IRCallID id)
 {
   /* The modified regs must match with the *.dasc implementation. */
-  RegSet drop = RID2RSET(RID_R12)|RID2RSET(RID_R13)|RID2RSET(RID_F0)|
-                RID2RSET(RID_F4)|RID2RSET(RID_F9)|RID2RSET(RID_F22)
-                |RID2RSET(RID_F23);
+  RegSet drop = RID2RSET(RID_X6)|RID2RSET(RID_X7)|RID2RSET(RID_F10)|
+                RID2RSET(RID_F14)|RID2RSET(RID_F1)|RID2RSET(RID_F3)|
+                RID2RSET(RID_F4);
   if (ra_hasreg(ir->r)) rset_clear(drop, ir->r);
   ra_evictset(as, drop);
   ra_destreg(as, ir, RID_FPRET);
-  emit_call(as, (void *)lj_ir_callinfo[id].func);
+  emit_call(as, (void *)lj_ir_callinfo[id].func, 0);
   ra_leftov(as, REGARG_FIRSTFPR, ir->op1);
 }
 
@@ -410,7 +402,7 @@ static void asm_retf(ASMState *as, IRIns *ir)
   Reg tmp = ra_scratch(as, rset_exclude(RSET_GPR, base));
   asm_guard(as, RISCVI_BNE, tmp,
 	    ra_allock(as, igcptr(pc), rset_exclude(rset_exclude(RSET_GPR, base), tmp)));
-  emit_dsi(as, RISCVI_LD, tmp, base, -8);
+  emit_lso(as, RISCVI_LD, tmp, base, -8);
 }
 
 /* -- Buffer operations --------------------------------------------------- */
@@ -464,7 +456,7 @@ static void asm_conv(ASMState *as, IRIns *ir)
     Reg dest = ra_dest(as, ir, RSET_GPR);
     Reg ftmp = ra_scratch(as, RSET_FPR);
     if (stfp) {  /* FP to FP conversion. */
-      emit_ds(as, st == IRT_NUM ? RISCVI_FMV_X_S : RISCVI_FMV_X_D, dest, ftmp);
+      emit_ds(as, st == IRT_NUM ? RISCVI_FMV_X_W : RISCVI_FMV_X_D, dest, ftmp);
       emit_ds(as, st == IRT_NUM ? RISCVI_FCVT_S_D : RISCVI_FCVT_D_S,
         ftmp, ra_alloc1(as, lref, RSET_FPR));
     } else {  /* Integer to FP conversion. */
@@ -476,7 +468,7 @@ static void asm_conv(ASMState *as, IRIns *ir)
   (((IRT_IS64 >> st) & 1) ?
    (st == IRT_I64 ? RISCVI_FCVT_D_L : RISCVI_FCVT_D_LU) :
    (st == IRT_INT ? RISCVI_FCVT_D_W : RISCVI_FCVT_D_WU));
-      emit_ds(as, st64 ? RISCVI_FMV_X_D : RISCVI_FMV_X_W);
+      emit_ds(as, st64 ? RISCVI_FMV_X_D : RISCVI_FMV_X_W, dest, ftmp);
       emit_ds(as, riscvi, ftmp, left);
     }
   } else if (irt_isfp(ir->t)) {
@@ -579,12 +571,12 @@ static void asm_tvstore64(ASMState *as, Reg base, int32_t ofs, IRRef ref)
   if (irref_isk(ref)) {
     TValue k;
     lj_ir_kvalue(as->J->L, &k, ir);
-    emit_lso(as, RISCVI_SD, base, ra_allock(as, (int64_t)k.u64, allow), ofs);
+    emit_lso(as, RISCVI_SD, ra_allock(as, (int64_t)k.u64, allow), base, ofs);
   } else {
     Reg src = ra_alloc1(as, ref, allow);
     rset_clear(allow, src);
     Reg type = ra_allock(as, (int64_t)irt_toitype(ir->t) << 47, allow);
-    emit_ds(as, RISCVI_SD, RID_TMP, base, ofs);
+    emit_lso(as, RISCVI_SD, RID_TMP, base, ofs);
     if (irt_isinteger(ir->t)) {
       emit_ds1s2(as, RISCVI_ADD, RID_TMP, RID_TMP, type);
       emit_ext(as, RISCVI_ZEXT_W, RID_TMP, src);
@@ -597,29 +589,21 @@ static void asm_tvstore64(ASMState *as, Reg base, int32_t ofs, IRRef ref)
 /* Get pointer to TValue. */
 static void asm_tvptr(ASMState *as, Reg dest, IRRef ref, MSize mode)	// todo-new
 {
-  int32_t tmpofs = (int32_t)(offsetof(global_State, tmptv)-32768);
-  RegSet allow = RSET_GPR;
   if ((mode & IRTMPREF_IN1)) {
     IRIns *ir = IR(ref);
     if (irt_isnum(ir->t)) {
-      if ((mode & IRTMPREF_OUT1)) {
-        Reg src = ra_alloc1(as, ref, RSET_FPR);
-	      emit_opk(as, RISCVI_ADDI, dest, RID_JGL, tmpofs, allow);
-        emit_lso(as, RISCVI_SD, src, RID_JGL, tmpofs, allow);
-      } else if (irref_isk(ref)) {
+      if (irref_isk(ref) && !(mode & IRTMPREF_OUT1)) {
   /* Use the number constant itself as a TValue. */
   ra_allockreg(as, igcptr(ir_knum(ir)), dest);
-      } else {
-        emit_dsi(as, RISCVI_ADDI, dest, RID_SP, ra_spill(as, ir));
+  return;
       }
+      emit_lso(as, RISCVI_FSD, ra_alloc1(as, ref, RSET_FPR), dest, 0);
     } else {
-      /* Otherwise use g->tmptv to hold the TValue. */
       asm_tvstore64(as, dest, 0, ref);
-      emit_opk(as, RISCVI_ADDI, dest, RID_JGL, tmpofs, RSET_GPR);
     }
-  } else {
-    emit_opk(as, RISCVI_ADDI, dest, RID_JGL, tmpofs, RSET_GPR);
   }
+  /* g->tmptv holds the TValue(s). */
+  emit_opk(as, RISCVI_ADDI, dest, RID_GL, offsetof(global_State, tmptv), RSET_GPR);
 }
 
 static void asm_aref(ASMState *as, IRIns *ir)
@@ -633,7 +617,7 @@ static void asm_aref(ASMState *as, IRIns *ir)
     ofs += 8*IR(ir->op2)->i;
     if (checki12(ofs)) {
       base = ra_alloc1(as, refa, RSET_GPR);
-      emit_dji(as, RISCVI_ADDI, dest, base, ofs);
+      emit_opk(as, RISCVI_ADDI, dest, base, ofs, rset_exclude(RSET_GPR, base));
       return;
     }
   }
@@ -723,7 +707,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     emit_ds(as, RISCVI_FMV_D_X, tmpnum, tmp1);
   } else {
     emit_branch(as, RISCVI_BEQ, tmp1, cmp64, l_end);
-    emit_di32(as, RID_TMP, as->snapno);
+    emit_loadk32(as, RID_TMP, as->snapno);
   }
   emit_dsi(as, RISCVI_LD, tmp1, dest, (int32_t)offsetof(Node, key.u64));
   *l_loop = RISCVI_BNE | RISCVF_S1(RID_ZERO) | RISCVF_S2(tmp1) | RISCVF_IMMB(as->mcp-l_loop);
@@ -756,12 +740,12 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
       emit_dsi(as, RISCVI_LW, tmp1, key, (int32_t)offsetof(GCstr, sid));
     } else {  /* Must match with hash*() in lj_tab.c. */
       emit_ds1s2(as, RISCVI_SUBW, tmp1, tmp1, tmp2);
-      emit_rot(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT3)&0x1f);
+      emit_rot(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT3)&0x1f, allow);
       emit_ds1s2(as, RISCVI_XOR, tmp1, tmp2, tmp1);
-      emit_rot(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT2-HASH_ROT1)&0x1f);
+      emit_rot(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT2-HASH_ROT1)&0x1f, allow);
       emit_ds1s2(as, RISCVI_SUBW, tmp2, tmp2, dest);
       emit_ds1s2(as, RISCVI_XOR, tmp2, tmp2, tmp1);
-      emit_rot(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT1)&0x1f);
+      emit_rot(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT1)&0x1f, allow);
       if (irt_isnum(kt)) {
 	emit_dsshamt(as, RISCVI_SLLIW, tmp1, tmp1, 1);
 	emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);	// hi
@@ -807,7 +791,7 @@ static void asm_hrefk(ASMState *as, IRIns *ir)
   }
   key = ra_scratch(as, allow);
   asm_guard(as, RISCVI_BNE, key, ra_allock(as, k, allow));
-  emit_lso(as, RISCVI_LD, key, idx, kofs, allow);
+  emit_lso(as, RISCVI_LD, key, idx, kofs);
   if (bigofs)
     emit_ds1s2(as, RISCVI_ADD, dest, node, ra_allock(as, ofs, allow));
 }
@@ -831,7 +815,7 @@ static void asm_uref(ASMState *as, IRIns *ir)
       emit_dsi(as, RISCVI_LD, dest, uv, ((int32_t)offsetof(GCupval, v))&0xfff);
     }
     emit_lso(as, RISCVI_LD, uv, func, (int32_t)offsetof(GCfuncL, uvptr) +
-      (int32_t)sizeof(MRef) * (int32_t)(ir->op2 >> 8), RSET_GPR);
+      (int32_t)sizeof(MRef) * (int32_t)(ir->op2 >> 8));
   }
 }
 
@@ -891,8 +875,8 @@ static void asm_fload(ASMState *as, IRIns *ir)
   RISCVIns riscvi = asm_fxloadins(ir);
   int32_t ofs;
   if (ir->op1 == REF_NIL) {  /* FLOAD from GG_State with offset. */
-    idx = ra_allock(as, (int64_t)J2GG(as->J), allow);
-    ofs = (int32_t)(ir->op2<<2);
+    idx = RID_GL;
+    ofs = (ir->op2 << 2) - GG_OFS(g);
   } else {
     idx = ra_alloc1(as, ir->op1, allow);
     if (ir->op2 == IRFL_TAB_ARRAY) {
@@ -906,7 +890,7 @@ static void asm_fload(ASMState *as, IRIns *ir)
   }
   rset_clear(allow, idx);
   lj_assertA(!irt_isfp(ir->t), "bad FP FLOAD");
-  emit_lso(as, riscvi, dest, idx, ofs, allow);
+  emit_lso(as, riscvi, dest, idx, ofs);
 }
 
 static void asm_fstore(ASMState *as, IRIns *ir)
@@ -955,11 +939,11 @@ static void asm_ahuvload(ASMState *as, IRIns *ir)
 	       "bad load type %d", irt_type(ir->t));
     dest = ra_dest(as, ir, irt_isnum(t) ? RSET_FPR : allow);
     rset_clear(allow, dest);
-    if (irt_isaddr(t))
+    if (irt_isaddr(t)) {
       emit_dsshamt(as, RISCVI_SLLI, dest, dest, 17);
       emit_dsshamt(as, RISCVI_SRLI, dest, dest, 17);
-    else if (irt_isint(t))
-      emit_ext(as, RISCVI_SLLIW, dest, dest);
+    } else if (irt_isint(t))
+      emit_ext(as, RISCVI_SEXT_W, dest, dest);
   }
   idx = asm_fuseahuref(as, ir->op1, &ofs, allow);
   if (ir->o == IR_VLOAD) ofs += 8 * ir->op2;
@@ -974,14 +958,14 @@ static void asm_ahuvload(ASMState *as, IRIns *ir)
   }
   if (ra_hasreg(dest)) {
     if (irt_isnum(t)) {
-      emit_lso(as, RISCVI_FLD, dest, idx, ofs, allow);
+      emit_lso(as, RISCVI_FLD, dest, idx, ofs);
       dest = type;
     }
   } else {
     dest = type;
   }
   emit_dsshamt(as, RISCVI_SRAI, type, dest, 47);
-  emit_lso(as, RISCVI_LD, dest, idx, ofs, allow);
+  emit_lso(as, RISCVI_LD, dest, idx, ofs);
 }
 
 static void asm_ahustore(ASMState *as, IRIns *ir)
@@ -994,7 +978,7 @@ static void asm_ahustore(ASMState *as, IRIns *ir)
   if (irt_isnum(ir->t)) {
     src = ra_alloc1(as, ir->op2, RSET_FPR);
     idx = asm_fuseahuref(as, ir->op1, &ofs, allow);
-    emit_lso(as, RISCVI_FSD, src, idx, ofs, allow);
+    emit_lso(as, RISCVI_FSD, src, idx, ofs);
   } else {
     Reg tmp = RID_TMP;
     if (irt_ispri(ir->t)) {
@@ -1007,7 +991,7 @@ static void asm_ahustore(ASMState *as, IRIns *ir)
       rset_clear(allow, type);
     }
     idx = asm_fuseahuref(as, ir->op1, &ofs, allow);
-    emit_lso(as, RISCVI_SD, tmp, idx, ofs, allow);
+    emit_lso(as, RISCVI_SD, tmp, idx, ofs);
     if (ra_hasreg(src)) {
       if (irt_isinteger(ir->t)) {
 	emit_ds1s2(as, RISCVI_ADD, tmp, tmp, type);
@@ -1089,7 +1073,7 @@ dotypecheck:
         asm_guard(as, RISCVI_BEQ, tmp1, RID_ZERO);
         emit_dsi(as, RISCVI_SLTIU, tmp1, tmp1, LJ_TISNUM);
 	if (ra_hasreg(dest)) {
-	  emit_lso(as, RISCVI_FLD, dest, base, ofs, allow);
+	  emit_lso(as, RISCVI_FLD, dest, base, ofs);
 	}
       } else {
 	asm_guard(as, RISCVI_BNE, tmp1,
@@ -1097,11 +1081,11 @@ dotypecheck:
       }
       emit_dsshamt(as, RISCVI_SRAI, tmp1, type, 47);
     }
-    emit_lso(as, RISCVI_LD, type, base, ofs, allow);
+    emit_lso(as, RISCVI_LD, type, base, ofs);
   } else if (ra_hasreg(dest)) {
     emit_lso(as, irt_isnum(t) ? RISCVI_FLD :
              irt_isint(t) ? RISCVI_LW : RISCVI_LD,
-             dest, base, ofs, allow);
+             dest, base, ofs);
   }
 }
 
@@ -1165,8 +1149,8 @@ static void asm_tbar(ASMState *as, IRIns *ir)
   Reg mark = ra_scratch(as, rset_exclude(RSET_GPR, tab));
   Reg link = RID_TMP;
   MCLabel l_end = emit_label(as);
-  emit_lso(as, RISCVI_SD, link, tab, ((int32_t)offsetof(GCtab, gclist)));
-  emit_lso(as, RISCVI_SB, mark, tab, ((int32_t)offsetof(GCtab, marked)));
+  emit_lso(as, RISCVI_SD, link, tab, (int32_t)offsetof(GCtab, gclist));
+  emit_lso(as, RISCVI_SB, mark, tab, (int32_t)offsetof(GCtab, marked));
   emit_setgl(as, tab, gc.grayagain);	// make tab gray again
   emit_getgl(as, link, gc.grayagain);
   emit_branch(as, RISCVI_BEQ, RID_TMP, RID_ZERO, l_end);	// black: not jump
@@ -1188,10 +1172,10 @@ static void asm_obar(ASMState *as, IRIns *ir)
   args[0] = ASMREF_TMP1;  /* global_State *g */
   args[1] = ir->op1;      /* TValue *tv      */
   asm_gencall(as, ci, args);
+  emit_ds(as, RISCVI_MV, ra_releasetmp(as, ASMREF_TMP1), RID_GL);
   obj = IR(ir->op1)->r;
   tmp = ra_scratch(as, rset_exclude(RSET_GPR, obj));
   emit_branch(as, RISCVI_BEQ, tmp, RID_ZERO, l_end);
-  emit_opk(as, RISCVI_ADDI, ra_releasetmp(as, ASMREF_TMP1), RID_JGL, -32768, RSET_GPR);
   emit_branch(as, RISCVI_BEQ, RID_TMP, RID_ZERO, l_end);	// black: jump
   emit_dsi(as, RISCVI_ANDI, tmp, tmp, LJ_GC_BLACK);
   emit_dsi(as, RISCVI_ANDI, RID_TMP, RID_TMP, LJ_GC_WHITES);
@@ -1334,7 +1318,7 @@ static void asm_arithov(ASMState *as, IRIns *ir)
     emit_ds1s2(as, RISCVI_XOR, RID_TMP, dest, dest == right ? RID_TMP : right);
   } else {  /* ((dest^left) & (dest^~right)) < 0 */
     emit_ds1s2(as, RISCVI_XOR, RID_TMP, RID_TMP, dest);
-    emit_ds1s2(as, RISCVI_NOR, RID_TMP, dest == right ? RID_TMP : right, RID_ZERO);
+    emit_ds(as, RISCVI_NOT, RID_TMP, dest == right ? RID_TMP : right);
   }
   emit_ds1s2(as, RISCVI_XOR, tmp, dest, dest == left ? RID_TMP : left);
   emit_ds1s2(as, ir->o == IR_ADDOV ? RISCVI_ADDW : RISCVI_SUBW, dest, left, right);
@@ -1348,12 +1332,12 @@ static void asm_arithov(ASMState *as, IRIns *ir)
 static void asm_mulov(ASMState *as, IRIns *ir)
 {
   Reg dest = ra_dest(as, ir, RSET_GPR);
-  Reg tmp, tmp2, right, left = ra_alloc2(as, ir, RSET_GPR);
+  Reg tmp1, tmp2, right, left = ra_alloc2(as, ir, RSET_GPR);
   right = (left >> 8); left &= 255;
-  tmp1 = ra_scratch(as, rset_exclude(rset_exclude(rset_exclude(RSET_GPR, left),
-						 right), dest));
-  tmp2 = ra_scratch(as, rset_exclude(rset_exclude(rset_exclude(rset_exclude(RSET_GPR, left),
-						right), dest), tmp1));
+  tmp1 = ra_scratch(as, RSET_GPR & ~(RID2RSET(left)|RID2RSET(right)
+                                    |RID2RSET(dest)));
+  tmp2 = ra_scratch(as, RSET_GPR &  ~(RID2RSET(left)|RID2RSET(right)
+                                     |RID2RSET(dest)|RID2RSET(tmp1)));
   asm_guard(as, RISCVI_BNE, tmp1, tmp2);
   emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);
   emit_dsshamt(as, RISCVI_SRAIW, tmp2, dest, 31);
@@ -1402,13 +1386,13 @@ static void asm_bswap(ASMState *as, IRIns *ir)
     emit_dsshamt(as, RISCVI_SRLIW, tmp5, tmp5, 24);
     emit_dsshamt(as, RISCVI_SRLI, tmp5, left, 8);
     emit_ds1s2(as, RISCVI_AND, tmp3, tmp3, tmp4);
-    emit_u(as, RISCVI_LUI, tmp4, RISCVF_HI(0xff0000));
+    emit_du(as, RISCVI_LUI, tmp4, RISCVF_HI(0xff0000));
     emit_dsshamt(as, RISCVI_SRLI, tmp3, left, 24);
     emit_ds1s2(as, RISCVI_OR, tmp1, tmp1, tmp3);
     emit_dsshamt(as, RISCVI_SRLI, tmp3, left, 56);
     emit_ds1s2(as, RISCVI_AND, tmp1, tmp1, tmp2);
-    emit_ds(as, RISCVI_ADDIW, tmp2, tmp2, 0xf00);
-    emit_u(as, RISCVI_LUI, tmp2, RISCVF_HI(0x10000));
+    emit_dsi(as, RISCVI_ADDIW, tmp2, tmp2, 0xf00);
+    emit_du(as, RISCVI_LUI, tmp2, RISCVF_HI(0x10000));
     emit_dsshamt(as, RISCVI_SRLI, tmp1, left, 40);
   } else {
     Reg tmp1, tmp2, tmp3;
@@ -1424,7 +1408,7 @@ static void asm_bswap(ASMState *as, IRIns *ir)
     emit_dsshamt(as, RISCVI_SLLI, tmp3, left, 24);
     emit_ds1s2(as, RISCVI_AND, tmp1, tmp1, tmp2);
     emit_dsi(as, RISCVI_ADDI, tmp2, tmp2, 0xf00);
-    emit_u(as, RISCVI_LUI, tmp2, RISCVF_HI(0x10000));
+    emit_du(as, RISCVI_LUI, tmp2, RISCVF_HI(0x10000));
     emit_dsshamt(as, RISCVI_SRLI, tmp1, left, 8);
   }
 }
@@ -1435,14 +1419,7 @@ static void asm_bitop(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns riscvik
   Reg right, left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
   if (irref_isk(ir->op2)) {
     intptr_t k = get_kval(as, ir->op2);
-    if (checki12(k << 1)) {
-      emit_dsi(as, riscvik, dest, left, k);
-    } else {
-      right = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, left));
-      emit_ds1s2(as, riscvi, dest, left, right);
-      emit_dsi(as, RISCVI_ADDI, right, right, RISCVF_LO(k));
-      emit_u(as, RISCVI_LUI, right, RISCVF_HI(k));
-    }
+    emit_opk(as, riscvik, dest, left, k, rset_exclude(RSET_GPR, left));
   } else {
     right = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, left));
     emit_ds1s2(as, riscvi, dest, left, right);
@@ -1498,14 +1475,14 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
       emit_ds1s2(as, RISCVI_OR, dest, dest, RID_TMP);
       if (dest != right) {
   emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP, left);
-  emit_ds(as, RISCV_NOT, RID_TMP, RID_TMP);
+  emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
   emit_ds1s2(as, RISCVI_AND, dest, right, RID_TMP);
       } else {
   emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP, right);
-  emit_ds(as, RISCV_NOT, RID_TMP, RID_TMP);
+  emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
   emit_ds1s2(as, RISCVI_AND, dest, left, RID_TMP);
       }
-      emit_ds(as, RISCV_SUB, RID_TMP, RID_ZERO, RID_TMP);
+      emit_ds2(as, RISCVI_NEG, RID_TMP, RID_TMP);
       emit_ds1s2(as, RISCVI_SLT, RID_TMP,
 	       ismax ? left : right, ismax ? right : left);
     }
@@ -1572,7 +1549,7 @@ static void asm_intcomp(ASMState *as, IRIns *ir)
     if ((op&2)) k++;
     if (checki12(k)) {
       asm_guard(as, (op&1) ? RISCVI_BNE : RISCVI_BEQ, tmp, RID_ZERO);
-      emit_dsi(as, (op&4) ? RISCVI_SLTUI : RISCVI_SLTI, tmp, left, k);
+      emit_dsi(as, (op&4) ? RISCVI_SLTIU : RISCVI_SLTI, tmp, left, k);
       return;
     }
   }
@@ -1626,13 +1603,12 @@ static void asm_hiop(ASMState *as, IRIns *ir)
 
 static void asm_prof(ASMState *as, IRIns *ir)
 {
-  lj_assertA(!checki12((HOOK_PROFILE) << 1), "HOOK_PROFILE does not fit in imms");
   UNUSED(ir);
-  Reg tmp = ra_scratch(as, RSET_GPR);
-  asm_guard(as, RISCVI_BNE, tmp, RID_ZERO);
-  emit_dsi(as, RISCVI_ANDI, tmp, tmp, HOOK_PROFILE);
-  emit_lsglptr2(as, RISCVI_LBU, tmp,
-	       (int32_t)offsetof(global_State, hookmask));
+  asm_guard(as, RISCVI_BNE, RID_TMP, RID_ZERO);
+  emit_opk(as, RISCVI_ANDI, RID_TMP, RID_TMP, HOOK_PROFILE,
+           RSET_GPR);
+  emit_lsglptr(as, RISCVI_LBU, RID_TMP,
+               (int32_t)offsetof(global_State, hookmask));
 }
 
 /* -- Stack handling ------------------------------------------------------ */
@@ -1646,7 +1622,7 @@ static void asm_stack_check(ASMState *as, BCReg topslot,
   ExitNo oldsnap = as->snapno;
   rset_clear(allow, pbase);
   as->snapno = exitno;
-  asm_guard(as, RISCVI_BNE, RID_CFUNCADDR, RID_ZERO);
+  asm_guard(as, RISCVI_BNE, RID_TMP, RID_ZERO);
   as->snapno = oldsnap;
   if (allow) {
     tmp = rset_pickbot(allow);
@@ -1655,8 +1631,8 @@ static void asm_stack_check(ASMState *as, BCReg topslot,
     tmp = RID_RET;
     emit_dsi(as, RISCVI_LD, tmp, RID_SP, 0);	/* Restore tmp1 register. */
   }
-  emit_dsi(as, RISCVI_SLTIU, RID_CFUNCADDR, RID_CFUNCADDR, (int32_t)(8*topslot));
-  emit_ds1s2(as, RISCVI_SUB, RID_CFUNCADDR, tmp, pbase);
+  emit_dsi(as, RISCVI_SLTIU, RID_TMP, RID_TMP, (int32_t)(8*topslot));
+  emit_ds1s2(as, RISCVI_SUB, RID_TMP, tmp, pbase);
   emit_lso(as, RISCVI_LD, tmp, tmp, offsetof(lua_State, maxstack));
   if (pbase == RID_TMP)
     emit_getgl(as, RID_TMP, jit_base);
@@ -1729,9 +1705,8 @@ static void asm_gc_check(ASMState *as)
   args[0] = ASMREF_TMP1;  /* global_State *g */
   args[1] = ASMREF_TMP2;  /* MSize steps     */
   asm_gencall(as, ci, args);
-  tmp1 = ra_releasetmp(as, ASMREF_TMP1);
+  emit_ds(as, RISCVI_MV, ra_releasetmp(as, ASMREF_TMP1), RID_GL);
   tmp2 = ra_releasetmp(as, ASMREF_TMP2);
-  ra_allockreg(as, (int64_t)(J2G(as->J)), tmp1);
   emit_loadi(as, tmp2, as->gcsteps);
   /* Jump around GC step if GC total < GC threshold. */
   emit_branch(as, RISCVI_BLTU, RID_TMP, tmp2, l_end);
@@ -1815,31 +1790,33 @@ static RegSet asm_head_side_base(ASMState *as, IRIns *irp, RegSet allow)
 /* Fixup the tail code. */
 static void asm_tail_fixup(ASMState *as, TraceNo lnk)
 {
-  MCode *p = as->mctop - 1;
+  MCode *p = as->mctop;
   MCode *target = lnk ? traceref(as->J,lnk)->mcode : (MCode *)lj_vm_exit_interp;
   int32_t spadj = as->T->spadjust;
   if (spadj == 0) {
-    *--p = RISCVI_NOP;
+    p[-2] = RISCVI_NOP;
+    as->mctop = p-2;
   } else {
     /* Patch stack adjustment. */
-    *--p = RISCVI_ADDI | RISCVF_D(RID_SP) | RISCVF_S1(RID_SP) | RISCVF_IMMI(spadj);
+    p[-2] = RISCVI_ADDI | RISCVF_D(RID_SP) | RISCVF_S1(RID_SP) | RISCVF_IMMI(spadj);
   }
   /* Patch exit jump. */
   MCode *tmp = p;
   ptrdiff_t delta = target - (p - 1);
   if (checki21(delta)) {
-    *--p = RISCVI_JAL | RISCVF_D(RID_ZERO) | RISCVF_IMMJ(delta);
+    *--p = RISCVI_NOP;
+    *--p = RISCVI_JAL | RISCVF_IMMJ(delta);
   } else {
-    Reg tmp = ra_scratch(as, RID2RSET(RID_CFUNCADDR));
-    *--p = RISCVI_JALR | RISCVF_D(RID_ZERO) | RISCVF_S1(tmp) | RISCVF_IMMI(RISCVF_LO(delta));
-    *--p = RISCVI_AUIPC | RISCVF_D(tmp) | RISCVF_IMMU(RISCVF_HI(delta));
+    Reg cfa = ra_scratch(as, RID2RSET(RID_CFUNCADDR));
+    *--p = RISCVI_JALR | RISCVF_D(cfa) | RISCVF_S1(cfa) | RISCVF_IMMI(RISCVF_LO(delta));
+    *--p = RISCVI_AUIPC | RISCVF_D(cfa) | RISCVF_IMMU(RISCVF_HI(delta));
   }
 }
 
 /* Prepare tail of code. */
 static void asm_tail_prep(ASMState *as)
 {
-  MCode *p = as->mctop - 1;  /* Leave room for exit branch. */
+  MCode *p = as->mctop - 2;  /* Leave room for exit branch. */
   if (as->loopref) {
     as->invmcp = as->mcp = p;
   } else {
@@ -1900,26 +1877,26 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
   for (; p < pe; p++) {
     if (*p == exitload) {  /* Look for load of exit number. */
       /* Look for exitstub branch, replace with branch to target. */
-      ptrdiff_t delta = target - (p - 1);
-      MCode ins = p[-1];
-      if (((p[-1] ^ RISCVF_IMMB(px-(p-1))) & 0xfff00000) == 0 &&
-    ((p[-1] & 0x0000007fu) == 0x63u) && p[-2] != RISCV_NOPATCH_GC_CHECK) {
+      ptrdiff_t delta = target - (p+1);
+      MCode ins = p[1];
+      if (((p[1] ^ RISCVF_IMMB(px-(p+1))) & 0xfff00000) == 0 &&
+          ((p[1] & 0x0000007fu) == 0x63u) && p[-1] != RISCV_NOPATCH_GC_CHECK) {
   lj_assertJ(checki32(delta), "branch target out of range");
   /* Patch branch, if within range. */
 	patchbranch:
   if (((delta + 0x1000) >> 13) == 0) { /* Patch branch */
-    p[-1] = (ins & 0x000fffffu) | RISCVF_IMMB(delta);
+    p[1] = (ins & 0x000fffffu) | RISCVF_IMMB(delta);
     p[0] = RISCVI_NOP;
     if (!cstart) cstart = p + 1;
   } else if (((delta + 0x100000) >> 21) == 0) { /* Inverted branch with jump */
-    p[-1] = RISCVI_JAL | RISCVF_D(RID_ZERO) | RISCVF_IMMJ(delta);
-    p[0] = ((ins ^ 0x00001000u) & 0x000fffffu) | RISCVF_IMMB(8);
+    p[1] = RISCVI_JAL| RISCVF_IMMJ(delta);
+    p[0] = ((ins ^ 0x00001000u) & 0x0000707fu) | RISCVF_IMMB(8);
     if (!cstart) cstart = p + 1;
   } else {  /* Branch out of range. Use spare jump slot in mcarea. */
     MCode *mcjump = asm_sparejump_use(mcarea, target);
     if (mcjump) {
 	    lj_mcode_sync(mcjump, mcjump+2);
-      delta = mcjump - p;
+      delta = mcjump - (p+1);
       if (((delta + 0x100000) >> 21) == 0) {
         goto patchbranch;
       } else {
@@ -1930,33 +1907,48 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
   
   // } else if (checki32(delta)) { /* In-place PCREL jump */
   // /* NYI, need special setup AFAIK, complex w/o nop slots? */
-  //   p[1] = RISCVI_JALR | RISCVF_D(RID_ZERO) | RISCVF_S1(RID_TMP) |
+  //   p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) |
   //          RISCVF_IMMI(RISCVF_LO(delta));
   //   p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
   //   p[-1] = ((ins ^ 0x00001000u) & 0x0000707fu) | RISCVF_IMMB(12);
   //   if (!cstart) cstart = p + 2;
   // }
   }
-      } else if (((ins ^ RISCVF_IMMJ(px-p-1)) & 0xfffff000) == 0 &&
-    ((ins & 0x0000707fu) == RISCVI_JAL)) {
+      } else if (((p[1] ^ RISCVF_IMMB(8)) & 0xfff00000) == 0 &&
+                 ((p[1] & 0x0000007fu) == 0x63u) &&
+                 ((p[2] ^ RISCVF_IMMJ(px-(p+2))) & 0xfffff000) == 0 &&
+                 ((p[2] & 0x0000007fu) == RISCVI_JAL) &&
+                 p[-1] != RISCV_NOPATCH_GC_CHECK) {
+  /* Patch long branch with jump, if within range. */
+  lj_assertJ(checki32(delta), "jump target out of range");
+  if(checki21(delta)) {
+    p[0] = (p[1] & 0x000fffffu) | RISCVF_IMMB(12);
+    p[1] = (p[2] & 0x00000fffu) | RISCVF_IMMJ(delta);
+    p[2] = RISCVI_NOP;
+  } else if (checki32(delta)) {
+    p[0] = (p[1] & 0x000fffffu) | RISCVF_IMMB(12);
+    p[2] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
+    p[1] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
+  }
+  if (!cstart) cstart = p + 2;
+      } else if (((ins ^ RISCVF_IMMJ(px-(p+1))) & 0xfffff000) == 0 &&
+    ((ins & 0x0000007fu) == RISCVI_JAL)) {
   /* Patch jump, if within range. */
   lj_assertJ(checki32(delta), "jump target out of range");
   if (checki21(delta)) {
-    p[0] = (ins & 0x0000707fu) | RISCVF_IMMJ(delta);
-    p[-1] = RISCVI_NOP;
+    p[1] = (p[1] & 0x00000fffu) | RISCVF_IMMJ(delta);
+    p[0] = RISCVI_NOP;
     if (!cstart) cstart = p + 1;
   } else if (checki32(delta)) {
-    p[0] = RISCVI_JALR | RISCVF_D(RID_ZERO) | RISCVF_S1(RID_TMP) |
-           RISCVF_IMMI(RISCVF_LO(delta));
-    p[-1] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
+    p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
+    p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
     if (!cstart) cstart = p + 1;
   }
       } else if (p+2 == pe) {
   if (p[2] == RISCVI_NOP) {
     ptrdiff_t delta = target - &p[1];
     lj_assertJ(checki32(delta), "jump target out of range");
-    p[1] = RISCVI_JALR | RISCVF_D(RID_ZERO) | RISCVF_S1(RID_TMP) |
-           RISCVF_IMMI(RISCVF_LO(delta));
+    p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
     p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
     if (!cstart) cstart = p + 2;
   }
