@@ -26,7 +26,7 @@
   _(F0) _(F1) _(F2) _(F3) _(F4) _(F5) _(F6) _(F7) \
   _(F8) _(F9) _(F10) _(F11) _(F12) _(F13) _(F14) _(F15) \
   _(F16) _(F17) _(F18) _(F19) _(F20) _(F21) _(F22) _(F23) \
-  _(F24) _(F25) _(F26) _(F27) _(F28) _(F29) _(F30) _(F31) _(FCSR)
+  _(F24) _(F25) _(F26) _(F27) _(F28) _(F29) _(F30) _(F31)
 #endif
 #define VRIDDEF(_)
 
@@ -96,7 +96,7 @@ enum {
 #define RSET_INIT	RSET_ALL
 
 #define RSET_SCRATCH_GPR \
-  (RID2RSET(RID_X1)|RSET_RANGE(RID_X5, RID_X7)|\
+  (RID2RSET(RID_RA)|RSET_RANGE(RID_X5, RID_X7)|\
    RSET_RANGE(RID_X10, RID_X17)|RSET_RANGE(RID_X28, RID_X31))
 
 #if LJ_SOFTFP
