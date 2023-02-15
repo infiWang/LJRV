@@ -44,7 +44,7 @@ static Reg ra_alloc2(ASMState *as, IRIns *ir, RegSet allow)
 
 /* -- Guard handling ------------------------------------------------------ */
 
-/* Copied from MIPS, AUIPC+JALR is expensive to setup */
+/* Copied from MIPS, AUIPC+JALR is expensive to setup in-place */
 #define RISCV_SPAREJUMP		4
 
 /* Setup spare long-range jump (trampoline?) slots per mcarea. */
@@ -53,9 +53,8 @@ static void asm_sparejump_setup(ASMState *as)
 {
   MCode *mxp = as->mctop;
   if ((char *)mxp == (char *)as->J->mcarea + as->J->szmcarea) {
-    mxp -= RISCV_SPAREJUMP*2;
-    memset(mxp, RISCVI_BEQ | RISCVF_S1(RID_CFUNCADDR) | RISCVF_S2(RID_CFUNCADDR),
-           RISCV_SPAREJUMP*2*sizeof(MCode));
+    for (int i = RISCV_SPAREJUMP*2; i--; )
+      *--mxp = RISCVI_BEQ | RISCVF_S1(RID_TMP) | RISCVF_S2(RID_TMP);
     as->mctop = mxp;
   }
 }
@@ -70,8 +69,9 @@ static MCode *asm_sparejump_use(MCode *mcarea, ptrdiff_t target)
           //  tjalr = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(target));
   while (slot--) {
     mxp -= 2;
-    tauipc = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(target-(intptr_t)mxp)),
-    tjalr = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(target-(intptr_t)mxp));
+    ptrdiff_t delta = (char *)target - (char *)mxp;
+    tauipc = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta)),
+    tjalr = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
     if (mxp[0] == tauipc && mxp[1] == tjalr) {
       return mxp;
     } else if (mxp[0] == tslot) {
@@ -690,7 +690,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
   /* Follow hash chain until the end. */
   l_loop = --as->mcp;
   emit_mv(as, dest, tmp1);
-  emit_dsi(as, RISCVI_LD, tmp1, dest, (int32_t)offsetof(Node, next));
+  emit_lso(as, RISCVI_LD, tmp1, dest, (int32_t)offsetof(Node, next));
   l_next = emit_label(as);
 
   /* Type and value comparison. */
@@ -709,7 +709,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     emit_branch(as, RISCVI_BEQ, tmp1, cmp64, l_end);
     emit_loadk32(as, RID_TMP, as->snapno);
   }
-  emit_dsi(as, RISCVI_LD, tmp1, dest, (int32_t)offsetof(Node, key.u64));
+  emit_lso(as, RISCVI_LD, tmp1, dest, (int32_t)offsetof(Node, key.u64));
   *l_loop = RISCVI_BNE | RISCVF_S1(RID_ZERO) | RISCVF_S2(tmp1) | RISCVF_IMMB(as->mcp-l_loop);
   if (!isk && irt_isaddr(kt)) {
     type = ra_allock(as, (int64_t)irt_toitype(kt) << 47, allow);
@@ -720,7 +720,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
   /* Load main position relative to tab->node into dest. */
   khash = isk ? ir_khash(as, irkey) : 1;
   if (khash == 0) {
-    emit_dsi(as, RISCVI_LD, dest, tab, (int32_t)offsetof(GCtab, node));
+    emit_lso(as, RISCVI_LD, dest, tab, (int32_t)offsetof(GCtab, node));
   } else {
     Reg tmphash = tmp1;
     if (isk)
@@ -732,12 +732,12 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     emit_dsshamt(as, RISCVI_SLLIW, tmp1, tmp1, 3);
     emit_dsshamt(as, RISCVI_SLLIW, tmp2, tmp1, 5);
     emit_ds1s2(as, RISCVI_AND, tmp1, tmp2, tmphash);	// idx = hi & tab->hmask
-    emit_dsi(as, RISCVI_LD, dest, tab, (int32_t)offsetof(GCtab, node));
-    emit_dsi(as, RISCVI_LW, tmp2, tab, (int32_t)offsetof(GCtab, hmask));
+    emit_lso(as, RISCVI_LD, dest, tab, (int32_t)offsetof(GCtab, node));
+    emit_lso(as, RISCVI_LW, tmp2, tab, (int32_t)offsetof(GCtab, hmask));
     if (isk) {
       /* Nothing to do. */
     } else if (irt_isstr(kt)) {
-      emit_dsi(as, RISCVI_LW, tmp1, key, (int32_t)offsetof(GCstr, sid));
+      emit_lso(as, RISCVI_LW, tmp1, key, (int32_t)offsetof(GCstr, sid));
     } else {  /* Must match with hash*() in lj_tab.c. */
       emit_ds1s2(as, RISCVI_SUBW, tmp1, tmp1, tmp2);
       emit_rot(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT3)&0x1f, allow);
@@ -809,10 +809,10 @@ static void asm_uref(ASMState *as, IRIns *ir)
     if (ir->o == IR_UREFC) {
       Reg tmp = ra_scratch(as, rset_exclude(rset_exclude(RSET_GPR, dest), uv));
       asm_guard(as, RISCVI_BEQ, tmp, RID_ZERO);
-      emit_dsi(as, RISCVI_ADDI, dest, uv, ((int32_t)offsetof(GCupval, tv))&0xfff);
-      emit_dsi(as, RISCVI_LBU, tmp, uv, ((int32_t)offsetof(GCupval, closed))&0xfff);
+      emit_dsi(as, RISCVI_ADDI, dest, uv, (int32_t)offsetof(GCupval, tv));
+      emit_lso(as, RISCVI_LBU, tmp, uv, (int32_t)offsetof(GCupval, closed));
     } else {
-      emit_dsi(as, RISCVI_LD, dest, uv, ((int32_t)offsetof(GCupval, v))&0xfff);
+      emit_lso(as, RISCVI_LD, dest, uv, (int32_t)offsetof(GCupval, v));
     }
     emit_lso(as, RISCVI_LD, uv, func, (int32_t)offsetof(GCfuncL, uvptr) +
       (int32_t)sizeof(MRef) * (int32_t)(ir->op2 >> 8));
@@ -1629,7 +1629,7 @@ static void asm_stack_check(ASMState *as, BCReg topslot,
     ra_modified(as, tmp);
   } else {	// allow == RSET_EMPTY
     tmp = RID_RET;
-    emit_dsi(as, RISCVI_LD, tmp, RID_SP, 0);	/* Restore tmp1 register. */
+    emit_lso(as, RISCVI_LD, tmp, RID_SP, 0);	/* Restore tmp1 register. */
   }
   emit_dsi(as, RISCVI_SLTIU, RID_TMP, RID_TMP, (int32_t)(8*topslot));
   emit_ds1s2(as, RISCVI_SUB, RID_TMP, tmp, pbase);
@@ -1723,12 +1723,12 @@ static void asm_loop_fixup(ASMState *as)
 {
   MCode *p = as->mctop;
   MCode *target = as->mcp;
-  ptrdiff_t delta = target - (p - 1);
+  ptrdiff_t delta = (char *)target - (char *)(p - 1);
   if (as->loopinv) {  /* Inverted loop branch? */
     // delta = target - (p - 1);
     /* asm_guard* already inverted the branch, and patched the final b. */
-    lj_assertA(((delta + 0x100000) >> 21) == 0, "branch target out of range");
-    if (((delta + 0x1000) >> 13) == 0) {
+    lj_assertA(checki21(delta), "branch target out of range");
+    if (checki13(delta)) {
       p[-1] = p[-2] | RISCVF_IMMB(delta);
       p[-2] = RISCVI_NOP;
     } else {
@@ -1802,7 +1802,7 @@ static void asm_tail_fixup(ASMState *as, TraceNo lnk)
   }
   /* Patch exit jump. */
   MCode *tmp = p;
-  ptrdiff_t delta = target - (p - 1);
+  ptrdiff_t delta = (char *)target - (char *)(p - 1);
   if (checki21(delta)) {
     *--p = RISCVI_NOP;
     *--p = RISCVI_JAL | RISCVF_IMMJ(delta);
@@ -1816,7 +1816,7 @@ static void asm_tail_fixup(ASMState *as, TraceNo lnk)
 /* Prepare tail of code. */
 static void asm_tail_prep(ASMState *as)
 {
-  MCode *p = as->mctop - 2;  /* Leave room for exit branch. */
+  MCode *p = as->mctop - 2;  /* Leave room for exitstub. */
   if (as->loopref) {
     as->invmcp = as->mcp = p;
   } else {
@@ -1877,7 +1877,7 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
   for (; p < pe; p++) {
     if (*p == exitload) {  /* Look for load of exit number. */
       /* Look for exitstub branch, replace with branch to target. */
-      ptrdiff_t delta = target - (p+1);
+      ptrdiff_t delta = (char *)target - (char *)(p+1);
       MCode ins = p[1];
       if (((p[1] ^ RISCVF_IMMB(px-(p+1))) & 0xfff00000) == 0 &&
           ((p[1] & 0x0000007fu) == 0x63u) && p[-1] != RISCV_NOPATCH_GC_CHECK) {
@@ -1896,7 +1896,7 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
     MCode *mcjump = asm_sparejump_use(mcarea, target);
     if (mcjump) {
 	    lj_mcode_sync(mcjump, mcjump+2);
-      delta = mcjump - (p+1);
+      delta = (char *)mcjump - (char *)(p+1);
       if (((delta + 0x100000) >> 21) == 0) {
         goto patchbranch;
       } else {
@@ -1946,7 +1946,7 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
   }
       } else if (p+2 == pe) {
   if (p[2] == RISCVI_NOP) {
-    ptrdiff_t delta = target - &p[1];
+    ptrdiff_t delta = (char *)target - (char *)p;
     lj_assertJ(checki32(delta), "jump target out of range");
     p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
     p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
