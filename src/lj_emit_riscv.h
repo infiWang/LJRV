@@ -180,6 +180,7 @@ static void emit_ext(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1)
         break;
       default:
         lj_assertA(0, "invalid ext op");
+        return;
     }
     emit_dsshamt(as, sri, rd, rd, shamt);   
     emit_dsshamt(as, sli, rd, rs1, shamt);
@@ -277,7 +278,7 @@ typedef MCode *MCLabel;
 static void emit_branch(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, MCode *target)
 {
   MCode *p = as->mcp;
-  ptrdiff_t delta = target - (p - 2);
+  ptrdiff_t delta = (char *)target - (char *)(p - 2);
   // lj_assertA(((delta + 0x10000) >> 13) == 0, "branch target out of range"); /* B */
   lj_assertA(((delta + 0x100000) >> 21) == 0, "branch target out of range"); /* ^B+J */
   if (checki13(delta)) {
@@ -293,7 +294,7 @@ static void emit_branch(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, MCode *
 static void emit_jmp(ASMState *as, MCode *target)
 {
   MCode *p = as->mcp;
-  ptrdiff_t delta = target - (p - 1);
+  ptrdiff_t delta = (char *)target - (char *)(p - 1);
   // lj_assertA(((delta + 0x100000) >> 21) == 0, "jump target out of range"); /* J */
   lj_assertA(checki32(delta), "jump target out of range"); /* AUIPC+JALR */
   if (checki21(delta)) {
@@ -312,7 +313,7 @@ static void emit_jmp(ASMState *as, MCode *target)
 static void emit_call(ASMState *as, void *target, int needcfa)
 {
   MCode *p = as->mcp;
-  ptrdiff_t delta = (char *)target - ((char *)(p - 1));
+  ptrdiff_t delta = (char *)target - (char *)(p - 1);
   if (checki21(delta)) {
     *--p = RISCVI_JAL | RISCVF_D(RID_RA) | RISCVF_IMMJ(delta);
   } else if (checki32(delta)) {
