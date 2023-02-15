@@ -2352,6 +2352,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi TMP2, sp, 32*8+32*8		// Recompute original value of sp.
   |  sd TMP2, 32*8+2*8(sp)		// Store sp in RID_SP
   |  li_vmstate EXIT
+  |  addxi DISPATCH, GL, GG_G2DISP
   |  addi CARG1, GL, GG_G2J
   |  // addi CARG2, CARG1, 1		// We don't care what's on the verge.
   |  addi CARG2, CARG1, 2047		// jit_State too large.
@@ -2402,7 +2403,6 @@ static void build_subroutines(BuildCtx *ctx)
   |  // Assumes TISNIL == ~LJ_VMST_INTERP == -1
   |  sw TISNIL, GL->vmstate
   |  decode_OP8 TMP1, INS
-  |  decode_BC8b TMP1
   |  sltiu TMP2, TMP1, BC_FUNCF*8
   |  add TMP0, DISPATCH, TMP1
   |  decode_RD8 RD, INS
