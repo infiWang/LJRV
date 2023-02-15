@@ -180,7 +180,7 @@ static LJ_AINLINE uint32_t *exitstub_trace_addr_(uint32_t *p)
 #define RISCVF_RM(m)	(((m)&7) << 12)
 #define RISCVF_IMMI(i)	((i) << 20)
 #define RISCVF_IMMS(i)	(((i)&0xfe0) << 20 | ((i)&0x1f) << 7)
-#define RISCVF_IMMB(i)	(((i)&0x1000) << 19 | ((i)&0x800) << 4 | ((i)&0x7e0) << 20 | ((i)&0x1e) << 7)
+#define RISCVF_IMMB(i)	(((i)&0x1000) << 19 | ((i)&0x800) >> 4 | ((i)&0x7e0) << 20 | ((i)&0x1e) << 7)
 #define RISCVF_IMMU(i)	(((i)&0xfffff) << 12)
 #define RISCVF_IMMJ(i)	(((i)&0x100000) << 11 | ((i)&0xff000) | ((i)&0x800) << 9 | ((i)&0x7fe) << 20)
 
