@@ -46,6 +46,7 @@ static void emit_i(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t i)
   *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_S1(rs1) | RISCVF_IMMI(i & 0xfff);
 }
 
+#define emit_di(as, riscvi, rd, i)         emit_i(as, riscvi, rd, 0, i)
 #define emit_dsi(as, riscvi, rd, rs1, i)     emit_i(as, riscvi, rd, rs1, i)
 #define emit_dsshamt(as, riscvi, rd, rs1, i) emit_i(as, riscvi, rd, rs1, i&0x3f)
 
@@ -77,16 +78,18 @@ static Reg ra_allock(ASMState *as, intptr_t k, RegSet allow);
 static void ra_allockreg(ASMState *as, intptr_t k, Reg r);
 static Reg ra_scratch(ASMState *as, RegSet allow);
 
-static void emit_lso(ASMState *as, RISCVIns riscvi, Reg dest, Reg src, int32_t ofs)
+static void emit_lso(ASMState *as, RISCVIns riscvi, Reg data, Reg base, int32_t ofs)
 {
   lj_assertA(checki12(ofs), "load/store offset %d out of range", ofs);
   switch (riscvi) {
     case RISCVI_LD: case RISCVI_LW: case RISCVI_LH: case RISCVI_LB:
     case RISCVI_LWU: case RISCVI_LHU: case RISCVI_LBU:
-      emit_dsi(as, riscvi, dest, src, ofs);
+    case RISCVI_FLW: case RISCVI_FLD:
+      emit_dsi(as, riscvi, data, base, ofs);
       break;
     case RISCVI_SD: case RISCVI_SW: case RISCVI_SH: case RISCVI_SB:
-      emit_s1s2i(as, riscvi, dest, src, ofs);
+    case RISCVI_FSW: case RISCVI_FSD:
+      emit_s1s2i(as, riscvi, base, data, ofs);
       break;
     default: lj_assertA(0, "invalid lso"); break;
   }
@@ -189,7 +192,7 @@ static void emit_ext(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1)
 
 static void emit_loadk12(ASMState *as, Reg rd, int32_t i)
 {
-  emit_dsi(as, RISCVI_ADDI, rd, rd, i);
+  emit_di(as, RISCVI_ADDI, rd, i);
 }
 
 static void emit_loadk20(ASMState *as, Reg rd, int32_t i)
@@ -198,11 +201,13 @@ static void emit_loadk20(ASMState *as, Reg rd, int32_t i)
   emit_du(as, RISCVI_LUI, rd, i);
 }
 
-static void emit_loadk32(ASMState *as, Reg rd, int32_t i)
+static void emit_loadk32(ASMState *as, Reg rd, int32_t i, int sp)
 {
   if (checki12(i)) {
     emit_loadk12(as, rd, i);
   } else {
+    if(!sp && LJ_UNLIKELY(RISCVF_HI(i) == 0x80000 && i > 0))
+      emit_ext(as, RISCVI_ZEXT_W, rd, rd);
     emit_dsi(as, RISCVI_ADDI, rd, rd, RISCVF_LO(i));
     emit_du(as, RISCVI_LUI, rd, RISCVF_HI(i));
   }
@@ -215,13 +220,13 @@ static void emit_loadk32(ASMState *as, Reg rd, int32_t i)
 
 
 /* Load a 32 bit constant into a GPR. */
-#define emit_loadi(as, r, i)	emit_loadk32(as, r, i);
+#define emit_loadi(as, r, i)	emit_loadk32(as, r, i, 0);
 
 /* Load a 64 bit constant into a GPR. */
 static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
 {
   if (checki32((int64_t)u64)) {
-    emit_loadk32(as, r, (int32_t)u64);
+    emit_loadk32(as, r, (int32_t)u64, 0);
   } else {
     emit_dsi(as, RISCVI_ADDI, r, r, u64 & 0x3ff);
     emit_dsshamt(as, RISCVI_SLLI, r, r, 10);
@@ -229,7 +234,7 @@ static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
     emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
     emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 21) & 0x7ff);
     emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
-    emit_loadk32(as, r, (u64 >> 32) & 0xffffffff);
+    emit_loadk32(as, r, (u64 >> 32) & 0xffffffff, 1);
   }
 }
 
@@ -278,7 +283,7 @@ typedef MCode *MCLabel;
 static void emit_branch(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, MCode *target)
 {
   MCode *p = as->mcp;
-  ptrdiff_t delta = (char *)target - (char *)(p - 2);
+  ptrdiff_t delta = (char *)target - (char *)(p - 1);
   // lj_assertA(((delta + 0x10000) >> 13) == 0, "branch target out of range"); /* B */
   lj_assertA(((delta + 0x100000) >> 21) == 0, "branch target out of range"); /* ^B+J */
   if (checki13(delta)) {
@@ -294,7 +299,7 @@ static void emit_branch(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, MCode *
 static void emit_jmp(ASMState *as, MCode *target)
 {
   MCode *p = as->mcp;
-  ptrdiff_t delta = (char *)target - (char *)(p - 1);
+  ptrdiff_t delta = (char *)target - (char *)(p - 2);
   // lj_assertA(((delta + 0x100000) >> 21) == 0, "jump target out of range"); /* J */
   lj_assertA(checki32(delta), "jump target out of range"); /* AUIPC+JALR */
   if (checki21(delta)) {
@@ -313,8 +318,9 @@ static void emit_jmp(ASMState *as, MCode *target)
 static void emit_call(ASMState *as, void *target, int needcfa)
 {
   MCode *p = as->mcp;
-  ptrdiff_t delta = (char *)target - (char *)(p - 1);
+  ptrdiff_t delta = (char *)target - (char *)(p - 2);
   if (checki21(delta)) {
+    *--p = RISCVI_NOP;
     *--p = RISCVI_JAL | RISCVF_D(RID_RA) | RISCVF_IMMJ(delta);
   } else if (checki32(delta)) {
     *--p = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_IMMI(RISCVF_LO(delta));
