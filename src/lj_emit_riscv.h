@@ -201,13 +201,14 @@ static void emit_loadk20(ASMState *as, Reg rd, int32_t i)
   emit_du(as, RISCVI_LUI, rd, i);
 }
 
-static void emit_loadk32(ASMState *as, Reg rd, int32_t i, int sp)
+static void emit_loadk32(ASMState *as, Reg rd, int32_t i)
 {
   if (checki12(i)) {
     emit_loadk12(as, rd, i);
   } else {
-    if(!sp && LJ_UNLIKELY(RISCVF_HI(i) == 0x80000 && i > 0))
-      emit_ext(as, RISCVI_ZEXT_W, rd, rd);
+    if(LJ_UNLIKELY(RISCVF_HI(i) == 0x80000 && i > 0))
+      emit_dsi(as, RISCVI_XORI, rd, rd, RISCVF_LO(i));
+    else
     emit_dsi(as, RISCVI_ADDI, rd, rd, RISCVF_LO(i));
     emit_du(as, RISCVI_LUI, rd, RISCVF_HI(i));
   }
@@ -220,13 +221,13 @@ static void emit_loadk32(ASMState *as, Reg rd, int32_t i, int sp)
 
 
 /* Load a 32 bit constant into a GPR. */
-#define emit_loadi(as, r, i)	emit_loadk32(as, r, i, 0);
+#define emit_loadi(as, r, i)	emit_loadk32(as, r, i);
 
 /* Load a 64 bit constant into a GPR. */
 static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
 {
   if (checki32((int64_t)u64)) {
-    emit_loadk32(as, r, (int32_t)u64, 0);
+    emit_loadk32(as, r, (int32_t)u64);
   } else {
     emit_dsi(as, RISCVI_ADDI, r, r, u64 & 0x3ff);
     emit_dsshamt(as, RISCVI_SLLI, r, r, 10);
@@ -234,7 +235,7 @@ static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
     emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
     emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 21) & 0x7ff);
     emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
-    emit_loadk32(as, r, (u64 >> 32) & 0xffffffff, 1);
+    emit_loadk32(as, r, (u64 >> 32) & 0xffffffff);
   }
 }
 
