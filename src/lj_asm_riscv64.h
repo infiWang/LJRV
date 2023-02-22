@@ -415,7 +415,7 @@ static void asm_retf(ASMState *as, IRIns *ir)
   Reg tmp = ra_scratch(as, rset_exclude(RSET_GPR, base));
   asm_guard(as, RISCVI_BNE, tmp,
 	    ra_allock(as, igcptr(pc), rset_exclude(rset_exclude(RSET_GPR, base), tmp)));
-  emit_lso(as, RISCVI_LD, base, tmp, -8);
+  emit_lso(as, RISCVI_LD, tmp, base, -8);
 }
 
 /* -- Buffer operations --------------------------------------------------- */
@@ -1145,8 +1145,8 @@ static void asm_cnew(ASMState *as, IRIns *ir)
   /* Initialize gct and ctypeid. lj_mem_newgco() already sets marked. */
   emit_lso(as, RISCVI_SB, RID_RET+1, RID_RET, (offsetof(GCcdata, gct)));
   emit_lso(as, RISCVI_SH, RID_TMP, RID_RET, (offsetof(GCcdata, ctypeid)));
-  emit_lso(as, RISCVI_ADDI, RID_RET+1, RID_ZERO, ~LJ_TCDATA);
-  emit_dj32i(as, RID_TMP, RID_ZERO, id);
+  emit_loadk12(as, RID_RET+1, ~LJ_TCDATA);
+  emit_loadk32(as, RID_TMP, id);
   args[0] = ASMREF_L;     /* lua_State *L */
   args[1] = ASMREF_TMP1;  /* MSize size   */
   asm_gencall(as, ci, args);
@@ -1667,7 +1667,7 @@ static void asm_stack_check(ASMState *as, BCReg topslot,
     ra_modified(as, tmp);
   } else {	// allow == RSET_EMPTY
     tmp = RID_RET;
-    emit_lso(as, RISCVI_LD, RID_SP, tmp, 0);	/* Restore tmp1 register. */
+    emit_lso(as, RISCVI_LD, tmp, RID_SP, 0);	/* Restore tmp1 register. */
   }
   emit_dsi(as, RISCVI_SLTIU, RID_TMP, RID_TMP, (int32_t)(8*topslot));
   emit_ds1s2(as, RISCVI_SUB, RID_TMP, tmp, pbase);
