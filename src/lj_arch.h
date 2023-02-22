@@ -453,7 +453,8 @@
 #define LJ_TARGET_GC64		1
 #define LJ_TARGET_EHRETREG	0
 #define LJ_TARGET_EHRAREG	1
-#define LJ_TARGET_JUMPRANGE	20	/* +-2^20 = +-1MB */ /* copy poor man's GOT from MIPS? */
+#define LJ_TARGET_JUMPRANGE	30	\
+/* JAL +-2^20 = +-1MB, AUIPC+JALR +-2^31 = +-2GB, leave 1 bit to avoid AUIPC corner case */
 #define LJ_TARGET_MASKSHIFT	1
 #define LJ_TARGET_MASKROT	1
 #define LJ_TARGET_UNIFYROT	2	/* Want only IR_BROR. */
