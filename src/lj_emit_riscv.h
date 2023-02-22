@@ -311,6 +311,7 @@ static void emit_jmp(ASMState *as, MCode *target)
     *--p = RISCVI_JALR | RISCVF_S1(cfa) | RISCVF_IMMI(RISCVF_LO(delta));
     *--p = RISCVI_AUIPC | RISCVF_D(cfa) | RISCVF_IMMU(RISCVF_HI(delta));
   }
+  as->mcp = p;
 }
 
 #define emit_mv(as, dst, src) \
@@ -331,6 +332,7 @@ static void emit_call(ASMState *as, void *target, int needcfa)
     *--p = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_IMMI(0);
     needcfa = 2;
   }
+  as->mcp = p;
   if (needcfa > 1)
     ra_allockreg(as, (intptr_t)target, RID_CFUNCADDR); 
   else if (needcfa > 0)
