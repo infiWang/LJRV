@@ -719,7 +719,7 @@ static uint32_t jit_cpudetect(void)
   }
 #endif
 
-#elif LJ_TARGET_RISCV
+#elif LJ_TARGET_RISCV64
 #if LJ_HASJIT
 
 // Detect C/B/V/P?
