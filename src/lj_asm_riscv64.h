@@ -1839,7 +1839,6 @@ static void asm_tail_fixup(ASMState *as, TraceNo lnk)
     p[-3] = RISCVI_ADDI | RISCVF_D(RID_SP) | RISCVF_S1(RID_SP) | RISCVF_IMMI(spadj);
   }
   /* Patch exit jump. */
-  MCode *tmp = p;
   ptrdiff_t delta = (char *)target - (char *)(p - 2);
   if (checki21(delta)) {
     p[-2] = RISCVI_JAL | RISCVF_IMMJ(delta);
