@@ -1362,7 +1362,6 @@ static void asm_mulov(ASMState *as, IRIns *ir)
 static void asm_bnot(ASMState *as, IRIns *ir)
 {
   Reg left, dest = ra_dest(as, ir, RSET_GPR);
-  IRIns *irl = IR(ir->op1);
   left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
   emit_ds(as, RISCVI_NOT, dest, left);
 }
