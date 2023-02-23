@@ -2822,8 +2822,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  ins_next
     |
     |4:  // RA is not an integer.
-    |  bgeu CARG3, TISNUM, <2
     |    addw TMP2, TMP2, TMP3
+    |  bgeu CARG3, TISNUM, <2
     |  fmv.d.x FTMP0, CARG1
     |   fmv.d.x FTMP2, CARG2
     |  bne CARG4, TISNUM, >5
