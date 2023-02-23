@@ -336,7 +336,7 @@ static void emit_call(ASMState *as, void *target, int needcfa)
   if (needcfa > 1)
     ra_allockreg(as, (intptr_t)target, RID_CFUNCADDR); 
   else if (needcfa > 0)
-    ra_scratch(as, RID_CFUNCADDR);
+    ra_scratch(as, RID2RSET(RID_CFUNCADDR));
 }
 
 /* -- Emit generic operations --------------------------------------------- */
