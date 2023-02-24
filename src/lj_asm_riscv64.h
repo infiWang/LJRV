@@ -763,12 +763,12 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
       if (irt_isnum(kt)) {
 	emit_dsshamt(as, RISCVI_SLLIW, tmp1, tmp1, 1);
 	emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);	// hi
-	emit_dsshamt(as, RISCVI_SLLIW, tmp2, tmp1, 0);	// lo
+	emit_ext(as, RISCVI_SEXT_W, tmp2, tmp1);	// lo
 	emit_ds(as, RISCVI_FMV_X_D, tmp1, key);
       } else {
 	checkmclim(as);
 	emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);	// hi
-	emit_dsshamt(as, RISCVI_SLLIW, tmp2, key, 0);	// lo
+	emit_ext(as, RISCVI_SEXT_W, tmp2, key);	// lo
 	emit_ds1s2(as, RISCVI_ADD, tmp1, key, type);
       }
     }
