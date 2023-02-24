@@ -711,7 +711,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     l_end = asm_exitstub_addr(as);
   }
   if (irt_isnum(kt)) {
-    emit_branch(as, RISCVI_BEQ, tmp1, RID_ZERO, l_end);
+    emit_branch(as, RISCVI_BNE, tmp1, RID_ZERO, l_end);
     emit_loadk32(as, RID_TMP, as->snapno);
     emit_ds1s2(as, RISCVI_FEQ_D, tmp1, tmpnum, key);
     emit_branch(as, RISCVI_BEQ, tmp1, RID_ZERO, l_next);
