@@ -238,6 +238,35 @@ static void *callback_mcode_init(global_State *g, uint32_t *page)
   }
   return p;
 }
+#elif LJ_TARGET_RISCV64
+static void *callback_mcode_init(global_State *g, uint32_t *page)
+{
+  // FIXME: BROKEN! Though JIT is not ready anyway.
+  uint32_t *p = page;
+  uintptr_t target = (uintptr_t)(void *)lj_vm_ffi_callback;
+  uintptr_t ug = (uintptr_t)(void *)g;
+  uintptr_t target_hi = (target >> 32), target_lo = target & 0xffffffffULL;
+  uintptr_t ug_hi = (ug >> 32), ug_lo = ug & 0xffffffffULL;
+  MSize slot;
+  *p++ = RISCVI_LUI  | RISCVF_D(RID_X6)  | RISCVF_IMMU(RISCVF_HI(target >> 32));
+  *p++ = RISCVI_LUI  | RISCVF_D(RID_X7)  | RISCVF_IMMU(RISCVF_HI(target & 0xffffffff));
+  *p++ = RISCVI_LUI  | RISCVF_D(RID_X30) | RISCVF_IMMU(RISCVF_HI(ug >> 32));
+  *p++ = RISCVI_LUI  | RISCVF_D(RID_X31) | RISCVF_IMMU(RISCVF_HI(ug & 0xffffffff));
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X6)  | RISCVF_S1(RID_X6)  | RISCVF_IMMI(RISCVF_LO(target_hi));
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X7)  | RISCVF_S1(RID_X7)  | RISCVF_IMMI(RISCVF_LO(target_lo));
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X30) | RISCVF_S1(RID_X30) | RISCVF_IMMI(RISCVF_LO(ug_hi));
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X31) | RISCVF_S1(RID_X31) | RISCVF_IMMI(RISCVF_LO(ug_lo));
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X6)  | RISCVF_S1(RID_X6)  | RISCVF_IMMSHAMT(32);
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X30) | RISCVF_S1(RID_X30) | RISCVF_IMMSHAMT(32);
+  *p++ = RISCVI_OR   | RISCVF_D(RID_X5)  | RISCVF_S1(RID_X6)  | RISCVF_S2(RID_X7);
+  *p++ = RISCVI_OR   | RISCVF_D(RID_X17) | RISCVF_S1(RID_X30) | RISCVF_S2(RID_X31);
+  *p++ = RISCVI_JALR | RISCVF_D(RID_X0)  | RISCVF_S1(RID_X5)  | RISCVF_IMMJ(0);
+  for (slot = 0; slot < CALLBACK_MAX_SLOT; slot++) {
+    *p++ = RISCVI_ORI | RISCVF_RD(RID_X5) | RISCVF_IMMI(slot);
+    *p++ = RISCVI_JAL | RISCVF_IMMJ(((char *)page-(char *)p));
+  }
+  return p;
+}
 #else
 /* Missing support for this architecture. */
 #define callback_mcode_init(g, p)	(p)
@@ -516,6 +545,31 @@ void lj_ccallback_mcode_free(CTState *cts)
   if (ctype_isfp(ctr->info) && ctr->size == sizeof(float)) \
     ((float *)dp)[1] = *(float *)dp;
 
+#elif LJ_TARGET_RISCV64
+
+#define CALLBACK_HANDLE_REGARG \
+  if (isfp) { \
+    if (nfpr + n <= CCALL_NARG_FPR) { \
+      sp = &cts->cb.fpr[nfpr]; \
+      nfpr += n; \
+      goto done; \
+    } else if (ngpr + n <= maxgpr) { \
+      sp = &cts->cb.gpr[ngpr]; \
+      ngpr += n; \
+      goto done; \
+    } \
+  } else { \
+    if (ngpr + n <= maxgpr) { \
+      sp = &cts->cb.gpr[ngpr]; \
+      ngpr += n; \
+      goto done; \
+    } \
+  }
+
+#define CALLBACK_HANDLE_RET \
+  if (ctype_isfp(ctr->info) && ctr->size == sizeof(float)) \
+    ((float *)dp)[1] = *(float *)dp;
+
 #else
 #error "Missing calling convention definitions for this architecture"
 #endif
@@ -662,7 +716,7 @@ static void callback_conv_result(CTState *cts, lua_State *L, TValue *o)
 	*(int32_t *)dp = ctr->size == 1 ? (int32_t)*(int8_t *)dp :
 					  (int32_t)*(int16_t *)dp;
     }
-#if LJ_TARGET_MIPS64 || (LJ_TARGET_ARM64 && LJ_BE)
+#if LJ_TARGET_MIPS64 || (LJ_TARGET_ARM64 && LJ_BE) || LJ_TARGET_RISCV64
     /* Always sign-extend results to 64 bits. Even a soft-fp 'float'. */
     if (ctr->size <= 4 &&
 	(LJ_ABI_SOFTFP || ctype_isinteger_or_bool(ctr->info)))
