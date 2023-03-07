@@ -303,7 +303,7 @@ int dasm_link(Dst_DECL, size_t *szp)
       while (1) {
 	  unsigned int ins = *p++;
 	  unsigned int action = (ins >> 20);
-	  if (ins & 0xf) continue; ins >>= 4;
+	  if (ins & 0xf) continue; else ins >>= 4;
 	  switch (action) {
 	  case DASM_STOP: case DASM_SECTION: goto stop;
 	  case DASM_ESC: p++; break;
