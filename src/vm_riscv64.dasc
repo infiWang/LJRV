@@ -2541,7 +2541,73 @@ static void build_subroutines(BuildCtx *ctx)
   |  vm_round_hf trunc
   |.endif
   |
-  ||//-----------------------------------------------------------------------
+  |
+  |//-----------------------------------------------------------------------
+  |//-- Miscellaneous functions --------------------------------------------
+  |//-----------------------------------------------------------------------
+  |
+  |.define NEXT_TAB,            TAB:CARG1
+  |.define NEXT_IDX,            CARG2
+  |.define NEXT_ASIZE,          CARG3
+  |.define NEXT_NIL,            CARG4
+  |.define NEXT_TMP0,           TMP0
+  |.define NEXT_TMP1,           TMP1
+  |.define NEXT_TMP2,           TMP2
+  |.define NEXT_RES_VK,         CRET1
+  |.define NEXT_RES_IDX,        CRET2
+  |.define NEXT_RES_PTR,        sp
+  |.define NEXT_RES_VAL,        0(sp)
+  |.define NEXT_RES_KEY,        8(sp)
+  |
+  |// TValue *lj_vm_next(GCtab *t, uint32_t idx)
+  |// Next idx returned in CRET2.
+  |->vm_next:
+  |.if JIT
+  |  lw NEXT_ASIZE, NEXT_TAB->asize
+  |  ld NEXT_TMP0, NEXT_TAB->array
+  |  li NEXT_NIL, LJ_TNIL
+  |1:  // Traverse array part.
+  |  bgeu NEXT_IDX, NEXT_ASIZE, >5
+  |  slliw NEXT_TMP1, NEXT_IDX, 3
+  |  add NEXT_TMP1, NEXT_TMP0, NEXT_TMP1
+  |  li TMP3, LJ_TISNUM
+  |  ld NEXT_TMP2, 0(NEXT_TMP1)
+  |  slli TMP3, TMP3, 47
+  |  or NEXT_TMP1, NEXT_IDX, TMP3
+  |  addiw NEXT_IDX, NEXT_IDX, 1
+  |  beq NEXT_TMP2, NEXT_NIL, <1
+  |  sd NEXT_TMP2, NEXT_RES_VAL
+  |  sd NEXT_TMP1, NEXT_RES_KEY
+  |  mv NEXT_RES_VK, NEXT_RES_PTR
+  |  mv NEXT_RES_IDX, NEXT_IDX
+  |  ret
+  |
+  |5:  // Traverse hash part.
+  |  subw NEXT_RES_IDX, NEXT_IDX, NEXT_ASIZE
+  |  lw NEXT_TMP0, NEXT_TAB->hmask
+  |  ld NODE:NEXT_RES_VK, NEXT_TAB->node
+  |  slliw NEXT_TMP2, NEXT_RES_IDX, 5
+  |  slliw TMP3, NEXT_RES_IDX, 3
+  |  subw TMP3, NEXT_TMP2, TMP3
+  |  add NODE:NEXT_RES_VK, NODE:NEXT_RES_VK, TMP3
+  |6:
+  |  bltu NEXT_TMP0, NEXT_RES_IDX, >8
+  |  ld NEXT_TMP2, NODE:NEXT_RES_VK->val
+  |  addiw NEXT_RES_IDX, NEXT_RES_IDX, 1
+  |  bne NEXT_TMP2, NEXT_NIL, >9
+  |  // Skip holes in hash part.
+  |  addi NODE:NEXT_RES_VK, NODE:NEXT_RES_VK, sizeof(Node)
+  |  j <6
+  |
+  |8:  // End of iteration. Set the key to nil (not the value).
+  |  sd NEXT_NIL, NEXT_RES_KEY
+  |  mv NEXT_RES_VK, NEXT_RES_PTR
+  |9:
+  |  addw NEXT_RES_IDX, NEXT_RES_IDX, NEXT_ASIZE
+  |  ret
+  |.endif
+  |
+  |//-----------------------------------------------------------------------
   |//-- FFI helper functions -----------------------------------------------
   |//-----------------------------------------------------------------------
   |
@@ -2667,70 +2733,6 @@ static void build_subroutines(BuildCtx *ctx)
   |// Note: vm_ffi_call must be the last function in this object file!
   |
   |//-----------------------------------------------------------------------
-  |//-- Miscellaneous functions --------------------------------------------
-  |//-----------------------------------------------------------------------
-  |
-  |.define NEXT_TAB,            TAB:CARG1
-  |.define NEXT_IDX,            CARG2
-  |.define NEXT_ASIZE,          CARG3
-  |.define NEXT_NIL,            CARG4
-  |.define NEXT_TMP0,           TMP0
-  |.define NEXT_TMP1,           TMP1
-  |.define NEXT_TMP2,           TMP2
-  |.define NEXT_RES_VK,         CRET1
-  |.define NEXT_RES_IDX,        CRET2
-  |.define NEXT_RES_PTR,        sp
-  |.define NEXT_RES_VAL,        0(sp)
-  |.define NEXT_RES_KEY,        8(sp)
-  |
-  |// TValue *lj_vm_next(GCtab *t, uint32_t idx)
-  |// Next idx returned in CRET2.
-  |->vm_next:
-  |.if JIT
-  |  lw NEXT_ASIZE, NEXT_TAB->asize
-  |  ld NEXT_TMP0, NEXT_TAB->array
-  |  li NEXT_NIL, LJ_TNIL
-  |1:  // Traverse array part.
-  |  bgeu NEXT_IDX, NEXT_ASIZE, >5
-  |  slliw NEXT_TMP1, NEXT_IDX, 3
-  |  add NEXT_TMP1, NEXT_TMP0, NEXT_TMP1
-  |  li TMP3, LJ_TISNUM
-  |  ld NEXT_TMP2, 0(NEXT_TMP1)
-  |  slli TMP3, TMP3, 47
-  |  or NEXT_TMP1, NEXT_IDX, TMP3
-  |  addiw NEXT_IDX, NEXT_IDX, 1
-  |  beq NEXT_TMP2, NEXT_NIL, <1
-  |  sd NEXT_TMP2, NEXT_RES_VAL
-  |  sd NEXT_TMP1, NEXT_RES_KEY
-  |  mv NEXT_RES_VK, NEXT_RES_PTR
-  |  mv NEXT_RES_IDX, NEXT_IDX
-  |  ret
-  |
-  |5:  // Traverse hash part.
-  |  subw NEXT_RES_IDX, NEXT_IDX, NEXT_ASIZE
-  |  lw NEXT_TMP0, NEXT_TAB->hmask
-  |  ld NODE:NEXT_RES_VK, NEXT_TAB->node
-  |  slliw NEXT_TMP2, NEXT_RES_IDX, 5
-  |  slliw TMP3, NEXT_RES_IDX, 3
-  |  subw TMP3, NEXT_TMP2, TMP3
-  |  add NODE:NEXT_RES_VK, NODE:NEXT_RES_VK, TMP3
-  |6:
-  |  bltu NEXT_TMP0, NEXT_RES_IDX, >8
-  |  ld NEXT_TMP2, NODE:NEXT_RES_VK->val
-  |  addiw NEXT_RES_IDX, NEXT_RES_IDX, 1
-  |  bne NEXT_TMP2, NEXT_NIL, >9
-  |  // Skip holes in hash part.
-  |  addi NODE:NEXT_RES_VK, NODE:NEXT_RES_VK, sizeof(Node)
-  |  j <6
-  |
-  |8:  // End of iteration. Set the key to nil (not the value).
-  |  sd NEXT_NIL, NEXT_RES_KEY
-  |  mv NEXT_RES_VK, NEXT_RES_PTR
-  |9:
-  |  addw NEXT_RES_IDX, NEXT_RES_IDX, NEXT_ASIZE
-  |  ret
-  |.endif
-  |
 }
 
 /* Generate the code for a single instruction. */
