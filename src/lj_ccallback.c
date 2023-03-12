@@ -256,14 +256,15 @@ static void *callback_mcode_init(global_State *g, uint32_t *page)
   *p++ = RISCVI_ADDI | RISCVF_D(RID_X7)  | RISCVF_S1(RID_X7)  | RISCVF_IMMI(RISCVF_LO(target_lo));
   *p++ = RISCVI_ADDI | RISCVF_D(RID_X30) | RISCVF_S1(RID_X30) | RISCVF_IMMI(RISCVF_LO(ug_hi));
   *p++ = RISCVI_ADDI | RISCVF_D(RID_X31) | RISCVF_S1(RID_X31) | RISCVF_IMMI(RISCVF_LO(ug_lo));
-  *p++ = RISCVI_SLLI | RISCVF_D(RID_X6)  | RISCVF_S1(RID_X6)  | RISCVF_IMMSHAMT(32);
-  *p++ = RISCVI_SLLI | RISCVF_D(RID_X30) | RISCVF_S1(RID_X30) | RISCVF_IMMSHAMT(32);
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X6)  | RISCVF_S1(RID_X6)  | RISCVF_SHAMT(32);
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X30) | RISCVF_S1(RID_X30) | RISCVF_SHAMT(32);
   *p++ = RISCVI_OR   | RISCVF_D(RID_X5)  | RISCVF_S1(RID_X6)  | RISCVF_S2(RID_X7);
   *p++ = RISCVI_OR   | RISCVF_D(RID_X17) | RISCVF_S1(RID_X30) | RISCVF_S2(RID_X31);
   *p++ = RISCVI_JALR | RISCVF_D(RID_X0)  | RISCVF_S1(RID_X5)  | RISCVF_IMMJ(0);
   for (slot = 0; slot < CALLBACK_MAX_SLOT; slot++) {
-    *p++ = RISCVI_ORI | RISCVF_RD(RID_X5) | RISCVF_IMMI(slot);
-    *p++ = RISCVI_JAL | RISCVF_IMMJ(((char *)page-(char *)p));
+    *p++ = RISCVI_ORI | RISCVF_D(RID_X5) | RISCVF_IMMI(slot);
+    *p = RISCVI_JAL | RISCVF_IMMJ(((char *)page-(char *)p));
+    p++;
   }
   return p;
 }
