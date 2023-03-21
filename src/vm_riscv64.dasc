@@ -84,15 +84,16 @@
 |// Stack layout while in interpreter. Must match with lj_frame.h.
 |// RISC-V 64 lp64d.
 |
-|.define CFRAME_SPACE,	248	// Delta for sp.
+|.define CFRAME_SPACE,	256	// Delta for sp.
 |
 |//----- 16 byte aligned, <-- sp entering interpreter
-|.define SAVE_ERRF,	244	// 32 bit values.
-|.define SAVE_NRES,	240
-|.define SAVE_CFRAME,	232	// 64 bit values.
-|.define SAVE_L,	224
-|.define SAVE_PC,	216
+|.define SAVE_ERRF,	252	// 32 bit values.
+|.define SAVE_NRES,	248
+|.define SAVE_CFRAME,	240	// 64 bit values.
+|.define SAVE_L,	232
+|.define SAVE_PC,	224
 |//----- 16 byte aligned
+|// Padding		216
 |.define SAVE_GPR_,	112	// .. 112+13*8: 64 bit GPR saves.
 |.define SAVE_FPR_,	16	// .. 16+12*8: 64 bit FPR saves.
 |
