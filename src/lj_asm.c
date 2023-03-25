@@ -186,7 +186,7 @@ IRFLDEF(FLOFS)
 #elif LJ_TARGET_MIPS
 #include "lj_emit_mips.h"
 #elif LJ_TARGET_LOONGARCH64
-#include "lj_emit_loongarch64.h"
+#include "lj_emit_loong64.h"
 #else
 #error "Missing instruction emitter for target CPU"
 #endif
@@ -1665,7 +1665,7 @@ static void asm_loop(ASMState *as)
 #elif LJ_TARGET_MIPS
 #include "lj_asm_mips.h"
 #elif LJ_TARGET_LOONGARCH64
-#include "lj_asm_loongarch64.h"
+#include "lj_asm_loong64.h"
 #else
 #error "Missing assembler for target CPU"
 #endif

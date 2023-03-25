@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define DASM_ARCH		"loongarch64"
+#define DASM_ARCH		"loong64"
 
 #ifndef DASM_EXTERN
 #define DASM_EXTERN(a,b,c,d)	0

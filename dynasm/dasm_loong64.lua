@@ -7,7 +7,7 @@
 
 -- Module information:
 local _info = {
-  arch =	"loongarch64",
+  arch =	"loong64",
   description =	"DynASM LoongArch64 module",
   version =	"1.5.0",
   vernum =	 10500,

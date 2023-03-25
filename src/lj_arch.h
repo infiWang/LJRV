@@ -440,7 +440,7 @@
 #endif
 
 #elif LUAJIT_TARGET == LUAJIT_ARCH_LOONGARCH64
-#define LJ_ARCH_NAME		"loongarch64"
+#define LJ_ARCH_NAME		"loong64"
 #define LJ_ARCH_BITS		64
 #define LJ_ARCH_ENDIAN		LUAJIT_LE
 #define LJ_TARGET_LOONGARCH64	1
@@ -452,6 +452,8 @@
 #define LJ_TARGET_MASKROT	1
 #define LJ_TARGET_UNIFYROT	2	/* Want only IR_BROR. */
 #define LJ_ARCH_NUMMODE		LJ_NUMMODE_DUAL
+
+#define LUAJIT_DISABLE_JIT	1
 
 #else
 #error "No target architecture defined"
