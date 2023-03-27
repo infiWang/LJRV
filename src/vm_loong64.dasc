@@ -254,6 +254,13 @@
 |  addiw a, x0, b
 |.endmacro
 |
+|.macro bfextri, a, b, c, d
+|  slli a, b, (63-c)
+|  srli a, a, (d+63-c)
+|.endmacro
+|
+|//-----------------------------------------------------------------------
+|
 |// Type definitions. Some of these are only used for documentation.
 |.type L,		lua_State,	LREG
 |.type GL,		global_State
@@ -1621,7 +1628,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  j ->fff_restv
   |1:
   |  sltiu TMP2, CARG2, LJ_TISNUM
-  |  bstrpick.d CARG1, CARG1, 62, 0
+  |  slli CARG1, CARG1, 1
+  |  srli CARG1, CARG1, 1
   |  bxeqz TMP2, ->fff_fallback		// int
   |// fallthrough
   |
@@ -4301,7 +4309,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     if (!vk) {				// init
       |  bxne CARG6, TISNUM, ->vmeta_for
       |  bxne CARG5, TISNUM, ->vmeta_for
-      |   bstrpick.d TMP0, CARG2, 31, 31	// sign
+      |   bfextri TMP0, CARG2, 31, 31	// sign
       |  slt CARG2, CARG3, CARG4
       |  slt TMP1, CARG4, CARG3
       |  snez TMP4, TMP0
