@@ -289,20 +289,29 @@
 |.define OFS_OP,	0
 |
 |// Instruction decode.
+|.macro decode_OP1, dst, ins; andi dst, ins, 0xff; .endmacro
 |.macro decode_BC4b, dst; slliw dst, dst, 2; .endmacro
 |.macro decode_BC8b, dst; slliw dst, dst, 3; .endmacro
-|.macro decode_OP, dst, ins; andi dst, ins, 0xff; .endmacro
-|.macro decode_RA, dst, ins; bstrpick.d dst, ins, 15, 8; decode_BC8b dst; .endmacro
-|.macro decode_RB, dst, ins; bstrpick.d dst, ins, 31, 24; decode_BC8b dst; .endmacro
-|.macro decode_RC, dst, ins; bstrpick.d dst, ins, 23, 16; decode_BC8b dst; .endmacro
-|.macro decode_RD, dst, ins; bstrpick.d dst, ins, 31, 16; decode_BC8b dst; .endmacro
-|.macro decode_OP1, dst, ins; decode_OP, dst, ins; .endmacro
-|.macro decode_OP8, dst, ins; decode_OP1, dst, ins; decode_BC8b dst; .endmacro
-|.macro decode_RA8, dst, ins; decode_RA, dst, ins; .endmacro
-|.macro decode_RB8, dst, ins; decode_RB, dst, ins; .endmacro
-|.macro decode_RC8, dst, ins; decode_RC, dst, ins; .endmacro
-|.macro decode_RD8, dst, ins; decode_RD, dst, ins; .endmacro
+|.macro decode_RX8b, dst; andi dst, dst, 0x7f8; .endmacro
+|
+|.macro decode_OP8a, dst, ins; decode_OP1 dst, ins; .endmacro
+|.macro decode_OP8b, dst; decode_BC8b dst; .endmacro
+|.macro decode_RA8a, dst, ins; srliw dst, ins, 5; .endmacro
+|.macro decode_RA8b, dst; decode_RX8b dst; .endmacro
+|.macro decode_RB8a, dst, ins; srliw dst, ins, 21; .endmacro
+|.macro decode_RB8b, dst; decode_RX8b dst; .endmacro
+|.macro decode_RC8a, dst, ins; srliw dst, ins, 13; .endmacro
+|.macro decode_RC8b, dst; decode_RX8b dst; .endmacro
+|.macro decode_RD8a, dst, ins; srliw dst, ins, 16; .endmacro
+|.macro decode_RD4b, dst; decode_BC4b dst; .endmacro
+|.macro decode_RD8b, dst; decode_BC8b dst; .endmacro
 |.macro decode_RDtoRC8, dst, src; andi dst, src, 0x7f8; .endmacro
+|
+|.macro decode_OP8, dst, ins; decode_OP1 dst, ins; decode_BC8b dst; .endmacro
+|.macro decode_RA8, dst, ins; decode_RA8a dst, ins; decode_RA8b dst; .endmacro
+|.macro decode_RB8, dst, ins; decode_RB8a dst, ins; decode_RB8b dst; .endmacro
+|.macro decode_RC8, dst, ins; decode_RC8a dst, ins; decode_RC8b dst; .endmacro
+|.macro decode_RD8, dst, ins; decode_RD8a dst, ins; decode_RD8b dst; .endmacro
 |
 |// Instruction fetch.
 |.macro ins_NEXT1
@@ -311,12 +320,13 @@
 |.endmacro
 |// Instruction decode+dispatch.
 |.macro ins_NEXT2
-|  decode_OP TMP1, INS
-|  decode_BC8b TMP1
+|  decode_OP8 TMP1, INS
 |  add TMP0, DISPATCH, TMP1
+|   decode_RD8a RD, INS
 |  ld TMP4, 0(TMP0)
-|   decode_RD RD, INS
-|   decode_RA RA, INS
+|   decode_RA8a RA, INS
+|   decode_RD8b RD
+|   decode_RA8b RA
 |  jr TMP4
 |.endmacro
 |.macro ins_NEXT
@@ -354,9 +364,8 @@
 |  ld PC, LFUNC:RB->pc
 |  lw INS, 0(PC)
 |   addi PC, PC, 4
-|  decode_OP TMP1, INS
-|   decode_RA RA, INS
-|    decode_BC8b TMP1
+|  decode_OP8 TMP1, INS
+|   decode_RA8 RA, INS
 |  add TMP0, DISPATCH, TMP1
 |  ld TMP0, 0(TMP0)
 |   add RA, RA, BASE
@@ -789,8 +798,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  lw INS, -4(PC)
   |   addi CARG2, RB, -32
   |  ld TMP0, 0(RA)
-  |  decode_RB MULTRES, INS
-  |   decode_RA RA, INS
+  |  decode_RB8 MULTRES, INS
+  |   decode_RA8 RA, INS
   |  add TMP1, BASE, MULTRES
   |   sd BASE, L->base
   |   sub CARG3, CARG2, TMP1
@@ -923,7 +932,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi PC, PC, -4
   |  sd BASE, L->base
   |  mv CARG1, L
-  |  decode_OP CARG4, INS
+  |  decode_OP1 CARG4, INS
   |  sd PC, SAVE_PC(sp)
   |  bl extern lj_meta_comp	// (lua_State *L, TValue *o1, *o2, int op)
   |  // Returns 0/1 or TValue * (metamethod).
@@ -1010,7 +1019,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd PC, SAVE_PC(sp)
   |  mv CARG3, RB
   |  mv CARG4, RC
-  |  decode_OP CARG5, INS
+  |  decode_OP1 CARG5, INS
   |  mv CARG1, L
   |  bl extern lj_meta_arith		// (lua_State *L, TValue *ra,*rb,*rc, BCReg op)
   |  // Returns NULL (finished) or TValue * (metamethod).
@@ -1086,11 +1095,11 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CARG1, L
   |  bl extern lj_meta_for	// (lua_State *L, TValue *base)
   |.if JIT
-  |  decode_OP TMP0, MULTRES
+  |  decode_OP1 TMP0, MULTRES
   |  li TMP1, BC_JFORI
   |.endif
-  |  decode_RA RA, MULTRES
-  |   decode_RD RD, MULTRES
+  |  decode_RA8 RA, MULTRES
+  |   decode_RD8 RD, MULTRES
   |.if JIT
   |  bxeq TMP0, TMP1, =>BC_JFORI
   |.endif
@@ -1628,14 +1637,16 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi RA, BASE, -16
   |  bxnez TMP0, ->vm_return
   |  lw INS, -4(PC)
-  |  decode_RB RB, INS
+  |  decode_RB8 RB, INS
   |5:
   |  sltu TMP2, RD, RB
-  |  decode_RA TMP0, INS
+  |  decode_RA8a TMP0, INS
   |  bnez TMP2, >6			// More results expected?
+  |  ins_next1
+  |  decode_RA8b TMP0
   |  // Adjust BASE. KBASE is assumed to be set for the calling frame.
   |  sub BASE, RA, TMP0
-  |  ins_next
+  |  ins_next2
   |
   |6:  // Fill up results with nil.
   |  add TMP1, RA, RD
@@ -2101,12 +2112,12 @@ static void build_subroutines(BuildCtx *ctx)
   |  ld BASE, L->base
   |4:  // Re-dispatch to static ins.
   |  lw INS, -4(PC)
-  |  decode_OP TMP1, INS
-  |  decode_BC8b TMP1
+  |  decode_OP8 TMP1, INS
   |  add TMP0, DISPATCH, TMP1
-  |   decode_RD RD, INS
+  |   decode_RD8a RD, INS
   |  ld TMP1, GG_DISP2STATIC(TMP0)
-  |   decode_RA RA, INS
+  |   decode_RA8 RA, INS
+  |   decode_RD8b RD
   |  jr TMP1
   |
   |->cont_hook:				// Continue from hook yield.
@@ -2167,7 +2178,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  // RA = resultptr, RB = meta base
   |  lw INS, -4(PC)
   |  ld TRACE:TMP2, -40(RB)		// Save previous trace.
-  |  decode_RA RC, INS
+  |  decode_RA8 RC, INS
   |  addi TMP1, MULTRES, -8
   |  cleartp TRACE:TMP2
   |  add RC, BASE, RC			// Call base.
@@ -2180,8 +2191,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi RC, RC, 8
   |  bnez TMP1, <1
   |2:
-  |  decode_RA RA, INS
-  |  decode_RB RB, INS
+  |  decode_RA8 RA, INS
+  |  decode_RB8 RB, INS
   |  add RA, RA, RB
   |  add RA, BASE, RA
   |3:
@@ -2306,13 +2317,12 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi PC, PC, 4
   |  // Assumes TISNIL == ~LJ_VMST_INTERP == -1
   |  .STXW TISNIL, DISPATCH, DISPATCH_GL(vmstate)
-  |  decode_OP TMP1, INS
-  |  decode_BC8b TMP1
+  |  decode_OP8 TMP1, INS
   |  sltiu TMP2, TMP1, BC_FUNCF*8
   |  add TMP0, DISPATCH, TMP1
-  |  decode_RD RD, INS
+  |  decode_RD8 RD, INS
   |  ld TMP3, 0(TMP0)
-  |  decode_RA RA, INS
+  |  decode_RA8 RA, INS
   |  beqz TMP2, >2
   |  jr TMP3
   |2:
@@ -2324,7 +2334,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  bnez TMP0, >3			// Trace stitching continuation?
   |  // Otherwise set KBASE for Lua function below fast function.
   |  lw TMP2, -4(TMP1)
-  |  decode_RA TMP0, TMP2
+  |  decode_RA8 TMP0, TMP2
   |  sub TMP1, BASE, TMP0
   |  ld LFUNC:TMP2, -32(TMP1)
   |  cleartp LFUNC:TMP2
@@ -3077,11 +3087,11 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = dst*8, RB = src1*8, RC = src2*8 | num_const*8
     ||if (vk == 1) {
     |   // RA = dst*8, RB = num_const*8, RC = src1*8
-    |   decode_RB RC, INS
+    |   decode_RB8 RC, INS
     |   decode_RDtoRC8 RB, RD
     ||} else {
     |   // RA = dst*8, RB = src1*8, RC = num_const*8
-    |   decode_RB RB, INS
+    |   decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     ||}
     ||switch (vk) {
@@ -3218,7 +3228,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
 
   case BC_CAT:
     |  // RA = dst*8, RB = src_start*8, RC = src_end*8
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     |  sub CARG3, RC, RB
     |   sd BASE, L->base
@@ -3507,7 +3517,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
 
   case BC_TGETV:
     |  // RA = dst*8, RB = table*8, RC = key*8
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
     |   add CARG3, BASE, RC
@@ -3546,7 +3556,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     break;
   case BC_TGETS:
     |  // RA = dst*8, RB = table*8, RC = str_const*8 (~)
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
     |   sub CARG3, KBASE, RC
@@ -3592,7 +3602,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     break;
   case BC_TGETB:
     |  // RA = dst*8, RB = table*8, RC = index*8
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |  add CARG2, BASE, RB
     |   decode_RDtoRC8 RC, RD
     |  ld TAB:RB, 0(CARG2)
@@ -3620,7 +3630,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     break;
   case BC_TGETR:
     |  // RA = dst*8, RB = table*8, RC = key*8
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     |  add RB, BASE, RB
     |   add RC, BASE, RC
@@ -3643,7 +3653,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
 
   case BC_TSETV:
     |  // RA = src*8, RB = table*8, RC = key*8
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
     |   add CARG3, BASE, RC
@@ -3689,7 +3699,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     break;
   case BC_TSETS:
     |  // RA = src*8, RB = table*8, RC = str_const*8 (~)
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
     |   sub CARG3, KBASE, RC
@@ -3763,7 +3773,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     break;
   case BC_TSETB:
     |  // RA = src*8, RB = table*8, RC = index*8
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     |  add CARG2, BASE, RB
     |   add RA, BASE, RA
@@ -3799,7 +3809,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     break;
   case BC_TSETR:
     |  // RA = dst*8, RB = table*8, RC = key*8
-    |  decode_RB RB, INS
+    |  decode_RB8 RB, INS
     |   decode_RDtoRC8 RC, RD
     |  add CARG1, BASE, RB
     |   add CARG3, BASE, RC
@@ -3937,7 +3947,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |
     |5:  // Tailcall to a fast function with a Lua frame below.
     |  lw INS, -4(TMP1)
-    |  decode_RA RA, INS
+    |  decode_RA8 RA, INS
     |  sub TMP1, BASE, RA
     |  ld TMP1, -32(TMP1)
     |  cleartp LFUNC:TMP1
@@ -4090,7 +4100,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = base*8, RB = (nresults+1)*8, RC = numparams*8
     |  ld TMP0, FRAME_PC(BASE)
     |  decode_RDtoRC8 RC, RD
-    |   decode_RB RB, INS
+    |   decode_RB8 RB, INS
     |  add RC, BASE, RC
     |   add RA, BASE, RA
     |  addi RC, RC, FRAME_VARG
@@ -4173,8 +4183,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   lw INS, -4(PC)
     |    addi TMP2, BASE, -16
     |    addi RC, RD, -8
-    |  decode_RA TMP0, INS
-    |   decode_RB RB, INS
+    |  decode_RA8 TMP0, INS
+    |   decode_RB8 RB, INS
     |   add TMP3, TMP2, RB
     |   sub BASE, TMP2, TMP0
     |  beqz RC, >3
@@ -4223,8 +4233,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     if (op == BC_RET1) {
       |  ld CRET1, 0(RA)
     }
-    |  decode_RB RB, INS
-    |   decode_RA RA, INS
+    |  decode_RB8 RB, INS
+    |   decode_RA8 RA, INS
     |   sub BASE, TMP2, RA
     if (op == BC_RET1) {
       |  sd CRET1, 0(TMP2)
@@ -4335,7 +4345,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  sd CARG1, FORL_EXT*8(RA)
     |2:
     if (op == BC_JFORI) {
-      |  decode_BC8b RD
+      |  decode_RD8b RD
       |  beqz CARG2, =>BC_JLOOP		// CARG2 == 0: excute the loop
     } else if (op == BC_JFORL) {
       |  beqz CARG2, =>BC_JLOOP
@@ -4476,7 +4486,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  sltu TMP0, NARGS8:RC, TMP1		// Check for missing parameters.
     |  bnez TMP0, >3
     if (op == BC_JFUNCF) {
-      |  decode_RD RD, INS
+      |  decode_RD8 RD, INS
       |  j =>BC_JLOOP
     } else {
       |  ins_next
