@@ -665,7 +665,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd L, SAVE_L(sp)
   |  li PC, FRAME_CP
   |  addi TMP0, sp, CFRAME_RESUME
-  |  addxi DISPATCH, DISPATCH, GG_G2DISP
+  |    addxi DISPATCH, DISPATCH, GG_G2DISP
   |   sw x0, SAVE_NRES(sp)
   |   sw x0, SAVE_ERRF(sp)
   |   sd CARG1, SAVE_PC(sp)			// Any value outside of bytecode is ok.
@@ -713,7 +713,7 @@ static void build_subroutines(BuildCtx *ctx)
   |    ld DISPATCH, L->glref		// Setup pointer to dispatch table.
   |   sd CARG1, SAVE_L(sp)
   |     mv BASE, CARG2
-  |   addxi DISPATCH, DISPATCH, GG_G2DISP
+  |    addxi DISPATCH, DISPATCH, GG_G2DISP
   |   sd CARG1, SAVE_PC(sp)		// Any value outside of bytecode is ok.
   |  sd TMP1, SAVE_CFRAME(sp)
   |  sd sp, L->cframe			// Add our C frame to cframe chain.
@@ -952,7 +952,7 @@ static void build_subroutines(BuildCtx *ctx)
   |4:
   |  lhu RD, OFS_RD(PC)
   |   addi PC, PC, 4
-  |  lui TMP1, -0x2		// -BCBIAS_J*4
+  |   lui TMP1, -0x2		// -BCBIAS_J*4
   |  slliw RD, RD, 2
   |  addw RD, RD, TMP1
   |  and RD, RD, TMP2
@@ -1254,7 +1254,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  or TMP2, TMP2, TMP0
   |  slli TMP2, TMP2, 3
   |   sub TMP0, DISPATCH, TMP2
-  |  .LDXD TAB:RB, TMP0, DISPATCH_GL(gcroot[GCROOT_BASEMT])-8
+  |   .LDXD TAB:RB, TMP0, DISPATCH_GL(gcroot[GCROOT_BASEMT])-8
   |  j <2
   |
   |.ffunc_2 setmetatable
@@ -1419,7 +1419,7 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |.ffunc pcall
   |  addi NARGS8:RC, NARGS8:RC, -8
-  |  .LDXBU TMP3, DISPATCH, DISPATCH_GL(hookmask)
+  |   .LDXBU TMP3, DISPATCH, DISPATCH_GL(hookmask)
   |   mv TMP2, BASE
   |  bxltz NARGS8:RC, ->fff_fallback
   |   addi BASE, BASE, 16
@@ -1441,7 +1441,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi NARGS8:TMP0, NARGS8:RC, -16
   |  ld CARG1, 0(BASE)
   |   ld CARG2, 8(BASE)
-  |  .LDXBU TMP1, DISPATCH, DISPATCH_GL(hookmask)
+  |     .LDXBU TMP1, DISPATCH, DISPATCH_GL(hookmask)
   |    bxltz NARGS8:TMP0, ->fff_fallback
   |  gettp TMP2, CARG2
   |  addi TMP2, TMP2, -LJ_TFUNC
@@ -1614,7 +1614,7 @@ static void build_subroutines(BuildCtx *ctx)
   |.ffunc_1 math_abs
   |  gettp CARG2, CARG1
   |  addi TMP2, CARG2, -LJ_TISNUM
-  |  sext.w TMP1, CARG1
+  |   sext.w TMP1, CARG1
   |  bnez TMP2, >1
   |  sraiw TMP0, TMP1, 31			// Extract sign. int
   |  xor TMP1, TMP1, TMP0
@@ -1660,8 +1660,8 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |6:  // Fill up results with nil.
   |  add TMP1, RA, RD
-  |  addi RD, RD, 8
-  |  sd TISNIL, -8(TMP1)
+  |   addi RD, RD, 8
+  |   sd TISNIL, -8(TMP1)
   |  j <5
   |
   |.macro math_extern, func
@@ -2365,6 +2365,7 @@ static void build_subroutines(BuildCtx *ctx)
   |//-- Math helper functions ----------------------------------------------
   |//-----------------------------------------------------------------------
   |
+  |
   |// Hard-float round to integer.
   |// Modifies TMP0, TMP1, FARG1, FARG5, FTMP1, FTMP3, FTMP4
   |.macro vm_round_hf, func
@@ -2545,7 +2546,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  ins_callt
   |.endif
   |
-  |->cont_ffi_callback:			// Return from FFI callback.
+  |->cont_ffi_callback:				// Return from FFI callback.
   |.if FFI
   |  .LDXD CTSTATE, DISPATCH, DISPATCH_GL(ctype_state)
   |  sd BASE, L->base
@@ -2553,7 +2554,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd L, CTSTATE->L
   |  mv CARG1, CTSTATE
   |  mv CARG2, RA
-  |  bl extern lj_ccallback_leave	// (CTState *cts, TValue *o)
+  |  bl extern lj_ccallback_leave		// (CTState *cts, TValue *o)
   |  fld FRET1, CTSTATE->cb.fpr[0]
   |  ld CRET1, CTSTATE->cb.gpr[0]
   |  fld FRET2, CTSTATE->cb.fpr[1]
@@ -3288,7 +3289,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   sraiw RD, INS, 16
     |  add RA, BASE, RA
     |   zext.w RD, RD
-    |     settp RD, TISNUM
+    |   settp RD, TISNUM
     |  ins_next1
     |   sd RD, 0(RA)
     |  ins_next2
@@ -3660,7 +3661,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   ld TMP1, 0(TMP3)
     |->BC_TGETR_Z:
     |  ins_next1
-    |  sd TMP1, 0(RA)
+    |   sd TMP1, 0(RA)
     |  ins_next2
     break;
 
@@ -4031,7 +4032,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |5:  // Traverse hash part.
     |  lw TMP1, TAB:RB->hmask
     |  subw RC, RC, TMP0
-    |  ld TMP2, TAB:RB->node
+    |   ld TMP2, TAB:RB->node
     |6:
     |  sltu CARG1, TMP1, RC		// End of iteration? Branch to ITERL+1.
     |   slliw TMP3, RC, 5
@@ -4202,11 +4203,11 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   sub BASE, TMP2, TMP0
     |  beqz RC, >3
     |2:
-    |  ld CRET1, 0(RA)
-    |  addi RA, RA, 8
+    |   ld CRET1, 0(RA)
+    |    addi RA, RA, 8
     |  addi RC, RC, -8
-    |  sd CRET1, 0(TMP2)
-    |  addi TMP2, TMP2, 8
+    |   sd CRET1, 0(TMP2)
+    |    addi TMP2, TMP2, 8
     |  bnez RC, <2
     |3:
     |  addi TMP3, TMP3, -8
