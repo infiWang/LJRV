@@ -1201,7 +1201,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv MULTRES, INS
   |  jal extern lj_meta_for	// (lua_State *L, TValue *base)
   |.if JIT
-  |  decode_OP8 TMP0, MULTRES
+  |  decode_OP1 TMP0, MULTRES
   |  li TMP1, BC_JFORI
   |.endif
   |  decode_RA8 RA, MULTRES
