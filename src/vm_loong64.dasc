@@ -843,8 +843,9 @@ static void build_subroutines(BuildCtx *ctx)
   |  // Returns TValue * (finished) or NULL (metamethod).
   |  beqz CRET1, >3
   |  ld TMP0, 0(CRET1)
+  |  ins_next1
   |  sd TMP0, 0(RA)
-  |  ins_next
+  |  ins_next2
   |
   |3:  // Call __index metamethod.
   |  // BASE = base, L->top = new base, stack = cont/func/t/k
@@ -899,9 +900,10 @@ static void build_subroutines(BuildCtx *ctx)
   |  // Returns TValue * (finished) or NULL (metamethod).
   |  ld TMP2, 0(RA)
   |  beqz CRET1, >3
+  |  ins_next1
   |  // NOBARRIER: lj_meta_tset ensures the table is not black.
   |  sd TMP2, 0(CRET1)
-  |  ins_next
+  |  ins_next2
   |
   |3:  // Call __newindex metamethod.
   |  // BASE = base, L->top = new base, stack = cont/func/t/k/(v)
@@ -3279,24 +3281,27 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  add RA, BASE, RA
     |   zext.w RD, RD
     |     settp RD, TISNUM
+    |  ins_next1
     |   sd RD, 0(RA)
-    |  ins_next
+    |  ins_next2
     break;
   case BC_KNUM:
     |  // RA = dst*8, RD = num_const*8
     |  add RD, KBASE, RD
     |   add RA, BASE, RA
     |  ld TMP0, 0(RD)
+    |  ins_next1
     |  sd TMP0, 0(RA)
-    |  ins_next
+    |  ins_next2
     break;
   case BC_KPRI:
     |  // RA = dst*8, RD = primitive_type*8 (~)
     |   add RA, BASE, RA
     |  slli TMP0, RD, 44	// 44+3
     |  not TMP0, TMP0
+    |  ins_next1
     |   sd TMP0, 0(RA)
-    |  ins_next
+    |  ins_next2
     break;
   case BC_KNIL:
     |  // RA = base*8, RD = end*8
