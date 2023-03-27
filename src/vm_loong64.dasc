@@ -15,7 +15,7 @@
 |// Fixed register assignments for the interpreter.
 |// Don't use: r0 = 0, r1 = ra, r2 = tp, r3 = sp, r21 = reserved
 |
-|
+|.define x0,		r0
 |// The following must be C callee-save (but BASE is often refetched).
 |.define BASE,		r23	// Base of current Lua stack frame.
 |.define KBASE,		r24	// Constants of current Lua function.
@@ -251,7 +251,7 @@
 |.endmacro
 |
 |.macro liw, a, b
-|  addiw a, r0, b
+|  addiw a, x0, b
 |.endmacro
 |
 |// Type definitions. Some of these are only used for documentation.
@@ -537,7 +537,7 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |->vm_leave_cp:
   |  ld TMP0, SAVE_CFRAME(sp)		// Restore previous C frame.
-  |  mv CRET1, r0			// Ok return status for vm_pcall.
+  |  mv CRET1, x0			// Ok return status for vm_pcall.
   |  sd TMP0, L->cframe
   |
   |->vm_leave_unw:
@@ -659,10 +659,10 @@ static void build_subroutines(BuildCtx *ctx)
   |  li PC, FRAME_CP
   |  addi TMP0, sp, CFRAME_RESUME
   |  addxi DISPATCH, DISPATCH, GG_G2DISP
-  |   sw r0, SAVE_NRES(sp)
-  |   sw r0, SAVE_ERRF(sp)
+  |   sw x0, SAVE_NRES(sp)
+  |   sw x0, SAVE_ERRF(sp)
   |   sd CARG1, SAVE_PC(sp)			// Any value outside of bytecode is ok.
-  |   sd r0, SAVE_CFRAME(sp)
+  |   sd x0, SAVE_CFRAME(sp)
   |   sd TMP0, L->cframe
   |    beqz TMP1, >3
   |
@@ -675,7 +675,7 @@ static void build_subroutines(BuildCtx *ctx)
   |     lui TMP3, 0x59c0		// TOBIT = 2^52 + 2^51 (float).
   |   sub RD, TMP1, BASE
   |     fmv.w.x TOBIT, TMP3
-  |    sb r0, L->status
+  |    sb x0, L->status
   |     fcvt.d.s TOBIT, TOBIT
   |    li_vmstate INTERP
   |   addi RD, RD, 8
@@ -748,7 +748,7 @@ static void build_subroutines(BuildCtx *ctx)
   |    ld TMP1, L->cframe
   |     addxi DISPATCH, DISPATCH, GG_G2DISP
   |   sw TMP0, SAVE_NRES(sp)		// Neg. delta means cframe w/o frame.
-  |  sw r0, SAVE_ERRF(sp)		// No error function.
+  |  sw x0, SAVE_ERRF(sp)		// No error function.
   |    sd TMP1, SAVE_CFRAME(sp)
   |    sd sp, L->cframe			// Add our C frame to cframe chain.
   |      .STXD L, DISPATCH, DISPATCH_GL(cur_L)
@@ -1581,7 +1581,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  andi TMP0, TMP0, CFRAME_RESUME
   |   sd TMP1, L->top
   |  bxeqz TMP0, ->fff_fallback
-  |  sd r0, L->cframe
+  |  sd x0, L->cframe
   |    sb CRET1, L->status
   |  j ->vm_leave_unw
   |
@@ -1613,7 +1613,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  slli TMP3, CARG1, 32
   |   settp CARG1, TISNUM
   |  bxgez TMP3, ->fff_restv
-  |  ori CARG1, r0, 0x41e		// 2^31 as a double.
+  |  ori CARG1, x0, 0x41e		// 2^31 as a double.
   |  slliw CARG1, CARG1, 4		// 0x41e0
   |  slli CARG1, CARG1, 48
   |  j ->fff_restv
@@ -1858,7 +1858,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sltz TMP2, CARG4
   |   sgtz TMP1, CARG3
   |  beqz TMP2, >4
-  |  mv CARG4, r0			// if (end < 0) end = 0
+  |  mv CARG4, x0			// if (end < 0) end = 0
   |4:
   |  bnez TMP1, >5
   |   mv CARG3, TMP3		// if (start < 1) start = 1
@@ -2165,7 +2165,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  // Returns ASMFunction.
   |  ld BASE, L->base
   |  ld TMP0, L->top
-  |  sd r0, SAVE_PC(sp)		// Invalidate for subsequent line hook.
+  |  sd x0, SAVE_PC(sp)		// Invalidate for subsequent line hook.
   |  add RA, BASE, RA
   |  sub NARGS8:RC, TMP0, BASE
   |  ld LFUNC:RB, FRAME_FUNC(BASE)
@@ -2265,7 +2265,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  savex_ 30, 31
   |  fsd f1, 1*8(sp)
   |  fsd f3, 3*8(sp)
-  |  sd r0, 32*8+1*8(sp)		// Clear RID_TMP.
+  |  sd x0, 32*8+1*8(sp)		// Clear RID_TMP.
   |  addi TMP2, sp, 32*8+32*8		// Recompute original value of sp.
   |  sd TMP2, 32*8+3*8(sp)		// Store sp in RID_SP
   |  li_vmstate EXIT
@@ -2279,7 +2279,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd BASE, L->base
   |  sw TMP1, DISPATCH_J(exitno)(DISPATCH)	// Store exit number.
   |  addxi CARG1, DISPATCH, GG_DISP2J
-  |  .STXD r0, DISPATCH, DISPATCH_GL(jit_base)
+  |  .STXD x0, DISPATCH, DISPATCH_GL(jit_base)
   |  mv CARG2, sp
   |  bl extern lj_trace_exit		// (jit_State *J, ExitState *ex)
   |  // Returns MULTRES (unscaled) or negated error code.
@@ -2309,7 +2309,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  li TISNUM, LJ_TISNUM		// Setup type comparison constants.
   |  fmv.w.x TOBIT, TMP3
   |  ld TMP1, LFUNC:RB->pc
-  |  .STXD r0, DISPATCH, DISPATCH_GL(jit_base)
+  |  .STXD x0, DISPATCH, DISPATCH_GL(jit_base)
   |  ld KBASE, PC2PROTO(k)(TMP1)
   |  fcvt.d.s TOBIT, TOBIT
   |  // Modified copy of ins_next which handles function header dispatch, too.
@@ -2514,7 +2514,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  fsd FARG8, CTSTATE->cb.fpr[7]
   |  addi TMP0, sp, CFRAME_SPACE
   |  sd TMP0, CTSTATE->cb.stack
-  |  sd r0, SAVE_PC(sp)		// Any value outside of bytecode is ok.
+  |  sd x0, SAVE_PC(sp)			// Any value outside of bytecode is ok.
   |  mv CARG1, CTSTATE
   |  mv CARG2, sp
   |  bl extern lj_ccallback_enter	// (CTState *cts, void *cf)
@@ -2765,7 +2765,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  xor TMP3, CARG3, CARG4			// Same type?
     |  sltiu TMP0, CARG3, LJ_TISTABUD+1		// Table or userdata? TMP0=1
     |  beqz TMP3, >3
-    |  mv TMP0, r0		// TMP0=0: not same type, or same type table/userdata
+    |  mv TMP0, x0		// TMP0=0: not same type, or same type table/userdata
     |3:
     |  cleartp TAB:TMP1, CARG1
     if (vk) {
@@ -3463,7 +3463,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     if (op == BC_TNEW) {
       |  srliw CARG2, RD, 3
       |  andi CARG2, CARG2, 0x7ff
-      |  ori TMP0, r0, 0x801
+      |  ori TMP0, x0, 0x801
       |  addiw TMP2, CARG2, -0x7ff
       |   srliw CARG3, RD, 14
       |  seqz TMP4, TMP2
@@ -3713,7 +3713,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  lw TMP0, TAB:RB->hmask
     |   lw TMP1, STR:RC->sid
     |    ld NODE:TMP2, TAB:RB->node
-    |   sb r0, TAB:RB->nomm		// Clear metamethod cache.
+    |   sb x0, TAB:RB->nomm		// Clear metamethod cache.
     |  and TMP1, TMP1, TMP0		// idx = str->sid & tab->hmask
     |  slliw TMP0, TMP1, 5
     |  slliw TMP1, TMP1, 3
@@ -4444,7 +4444,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  .LDXD TMP0, DISPATCH, DISPATCH_J(trace)
     |  add TMP0, TMP0, RD
     |  // Traces on LOONGARCH don't store the trace number, so use 0.
-    |  .STXD r0, DISPATCH, DISPATCH_GL(vmstate)
+    |  .STXD x0, DISPATCH, DISPATCH_GL(vmstate)
     |  ld TRACE:TMP1, 0(TMP0)
     |  .STXD BASE, DISPATCH, DISPATCH_GL(jit_base)	// store Current JIT code L->base
     |  ld TMP1, TRACE:TMP1->mcode
