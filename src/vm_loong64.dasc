@@ -166,11 +166,11 @@
 |.endmacro
 |
 |.macro bxgt, a, b, tgt
-|  bgt b, a, tgt
+|  bgt a, b, tgt
 |.endmacro
 |
 |.macro bxle, a, b, tgt
-|  ble b, a, tgt
+|  ble a, b, tgt
 |.endmacro
 |
 |.macro bxltu, a, b, tgt
@@ -182,11 +182,11 @@
 |.endmacro
 |
 |.macro bxgtu, a, b, tgt
-|  bgtu b, a, tgt
+|  bgtu a, b, tgt
 |.endmacro
 |
 |.macro bxleu, a, b, tgt
-|  bleu b, a, tgt
+|  bleu a, b, tgt
 |.endmacro
 |
 |.macro bxeqz, a, tgt
