@@ -777,10 +777,10 @@ static void build_subroutines(BuildCtx *ctx)
   |   mv RB, BASE
   |   mv BASE, TMP2			// Restore caller BASE.
   |    ld LFUNC:TMP1, FRAME_FUNC(TMP2)
+  |     ld PC, -24(RB)			// Restore PC from [cont|PC].
   |.if FFI
   |  sltiu TMP3, TMP0, 2
   |.endif
-  |     ld PC, -24(RB)			// Restore PC from [cont|PC].
   |    cleartp LFUNC:TMP1
   |   add TMP2, RA, RD
   |  ld TMP1, LFUNC:TMP1->pc
@@ -827,12 +827,12 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |->vmeta_tgets:
   |  addxi CARG2, DISPATCH, DISPATCH_GL(tmptv)
+  |   addxi CARG3, DISPATCH, DISPATCH_GL(tmptv2)
   |  li TMP0, LJ_TTAB
   |   li TMP1, LJ_TSTR
   |  settp TAB:RB, TMP0
-  |   addxi CARG3, DISPATCH, DISPATCH_GL(tmptv2)
-  |  sd TAB:RB, 0(CARG2)
   |   settp STR:RC, TMP1
+  |  sd TAB:RB, 0(CARG2)
   |   sd STR:RC, 0(CARG3)
   |  j >1
   |
@@ -884,12 +884,12 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |->vmeta_tsets:
   |  addxi CARG2, DISPATCH, DISPATCH_GL(tmptv)
+  |   addxi CARG3, DISPATCH, DISPATCH_GL(tmptv2)
   |  li TMP0, LJ_TTAB
   |   li TMP1, LJ_TSTR
   |  settp TAB:RB, TMP0
-  |   addxi CARG3, DISPATCH, DISPATCH_GL(tmptv2)
-  |  sd TAB:RB, 0(CARG2)
   |   settp STR:RC, TMP1
+  |  sd TAB:RB, 0(CARG2)
   |   sd STR:RC, 0(CARG3)
   |  j >1
   |
@@ -997,10 +997,10 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |->vmeta_equal_cd:
   |.if FFI
-  |  mv CARG2, INS
   |  addi PC, PC, -4
-  |  sd BASE, L->base
   |  mv CARG1, L
+  |  mv CARG2, INS
+  |  sd BASE, L->base
   |  sd PC, SAVE_PC(sp)
   |  bl extern lj_meta_equal_cd		// (lua_State *L, BCIns op)
   |  // Returns 0/1 or TValue * (metamethod).
@@ -1023,13 +1023,13 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv RC, RB
   |
   |->vmeta_arith:
+  |  mv CARG1, L
   |   sd BASE, L->base
   |  mv CARG2, RA
   |   sd PC, SAVE_PC(sp)
   |  mv CARG3, RB
   |  mv CARG4, RC
   |  decode_OP1 CARG5, INS
-  |  mv CARG1, L
   |  bl extern lj_meta_arith		// (lua_State *L, TValue *ra,*rb,*rc, BCReg op)
   |  // Returns NULL (finished) or TValue * (metamethod).
   |  bxeqz CRET1, ->cont_nop
@@ -1067,11 +1067,11 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |->vmeta_call:			// Resolve and call __call metamethod.
   |  // TMP2 = old base, BASE = new base, RC = nargs*8
+  |  mv CARG1, L
   |   sd TMP2, L->base			// This is the callers base!
   |  addi CARG2, BASE, -16
   |   sd PC, SAVE_PC(sp)
   |  add CARG3, BASE, RC
-  |  mv CARG1, L
   |   mv MULTRES, NARGS8:RC
   |  bl extern lj_meta_call		// (lua_State *L, TValue *func, TValue *top)
   |  ld LFUNC:RB, FRAME_FUNC(BASE)	// Guaranteed to be a function here.
@@ -1081,11 +1081,11 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |->vmeta_callt:			// Resolve __call for BC_CALLT.
   |  // BASE = old base, RA = new base, RC = nargs*8
+  |  mv CARG1, L
   |   sd BASE, L->base
   |  addi CARG2, RA, -16
   |   sd PC, SAVE_PC(sp)
   |  add CARG3, RA, RC
-  |  mv CARG1, L
   |   mv MULTRES, NARGS8:RC
   |  bl extern lj_meta_call		// (lua_State *L, TValue *func, TValue *top)
   |   ld RB, FRAME_FUNC(RA)		// Guaranteed to be a function here.
@@ -1097,11 +1097,11 @@ static void build_subroutines(BuildCtx *ctx)
   |//-- Argument coercion for 'for' statement ------------------------------
   |
   |->vmeta_for:
+  |  mv CARG1, L
   |   sd BASE, L->base
   |  mv CARG2, RA
   |   sd PC, SAVE_PC(sp)
   |  mv MULTRES, INS
-  |  mv CARG1, L
   |  bl extern lj_meta_for	// (lua_State *L, TValue *base)
   |.if JIT
   |  decode_OP1 TMP0, MULTRES
@@ -1147,10 +1147,10 @@ static void build_subroutines(BuildCtx *ctx)
   |.macro .ffunc_nn, name
   |->ff_ .. name:
   |  ld CARG1, 0(BASE)
-  |   ld CARG2, 8(BASE)
   |    sltiu TMP0, NARGS8:RC, 16
-  |  gettp TMP1, CARG1
+  |   ld CARG2, 8(BASE)
   |  bxnez TMP0, ->fff_fallback
+  |  gettp TMP1, CARG1
   |   gettp TMP2, CARG2
   |  sltiu TMP1, TMP1, LJ_TISNUM
   |   sltiu TMP2, TMP2, LJ_TISNUM
@@ -1172,7 +1172,6 @@ static void build_subroutines(BuildCtx *ctx)
   |//-- Base library: checks -----------------------------------------------
   |.ffunc_1 assert
   |  gettp TMP1, CARG1
-  |//  ld PC, FRAME_PC(BASE)
   |  sltiu TMP1, TMP1, LJ_TISTRUECOND
   |  addi RA, BASE, -16
   |  bxeqz TMP1, ->fff_fallback
@@ -2684,12 +2683,12 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  fmv.d.x FTMP0, CARG1
     |  fmv.d.x FTMP2, CARG2
     |3:  // RA and RD are both numbers.
+    |  addw TMP2, TMP2, TMP3
     if (op == BC_ISLT || op == BC_ISGE) {
       |  fcmp.clt.d FCC0, FTMP0, FTMP2
     } else {
       |  fcmp.cult.d FCC0, FTMP0, FTMP2
     }
-    |  addw TMP2, TMP2, TMP3
     |  movcf2gr TMP3, FCC0
     if (op == BC_ISLT || op == BC_ISGT) {
       |  snez TMP4, TMP3
@@ -2846,9 +2845,9 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  ld CARG1, 0(RA)
     |   ld CARG2, 0(RD)
     |    lhu TMP2, OFS_RD(PC)
-    |    addi PC, PC, 4
     |  gettp CARG3, CARG1
     |   gettp CARG4, CARG2
+    |    addi PC, PC, 4
     |    lui TMP3, -0x2		// -BCBIAS_J*4
     if (vk) {
       |->BC_ISEQN_Z:
@@ -3289,8 +3288,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   sraiw RD, INS, 16
     |  add RA, BASE, RA
     |   zext.w RD, RD
-    |   settp RD, TISNUM
     |  ins_next1
+    |   settp RD, TISNUM
     |   sd RD, 0(RA)
     |  ins_next2
     break;
@@ -4199,8 +4198,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |    addi RC, RD, -8
     |  decode_RA8 TMP0, INS
     |   decode_RB8 RB, INS
-    |   add TMP3, TMP2, RB
     |   sub BASE, TMP2, TMP0
+    |   add TMP3, TMP2, RB
     |  beqz RC, >3
     |2:
     |   ld CRET1, 0(RA)
