@@ -38,11 +38,11 @@ enum {
   RID_FPRET = RID_F0,
 
   /* These definitions must match with the *.dasc file(s): */
-  RID_BASE = RID_R23,		/* Interpreter BASE. */
-  RID_LPC = RID_R25,		/* Interpreter PC. */
+  RID_BASE = RID_R22,		/* Interpreter BASE. */
+  RID_LPC = RID_R24,		/* Interpreter PC. */
   RID_DISPATCH = RID_R26,	/* Interpreter DISPATCH table. */
+  RID_GL = RID_R25,		/* Interpreter GL. */
   RID_LREG = RID_R27,		/* Interpreter L. */
-  RID_JGL = RID_R22,		/* On-trace: global_State + 32768. */
 
   /* Register ranges [min, max) and number of registers. */
   RID_MIN_GPR = RID_R0,
