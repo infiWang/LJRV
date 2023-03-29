@@ -213,36 +213,6 @@
 |  bgtz a, tgt
 |.endmacro
 |
-|.macro .STXW, a, b, c
-|  lui r20, c
-|  srai r20, r20, 16
-|  sxw a, b, r20
-|.endmacro
-|
-|.macro .STXD, a, b, c
-|  lui r20, c
-|  srai r20, r20, 16
-|  sxd a, b, r20
-|.endmacro
-|
-|.macro .LDXW, a, b, c
-|  lui r20, c
-|  srai r20, r20, 16
-|  lxw a, b, r20
-|.endmacro
-|
-|.macro .LDXD, a, b, c
-|  lui r20, c
-|  srai r20, r20, 16
-|  lxd a, b, r20
-|.endmacro
-|
-|.macro .LDXBU, a, b, c
-|  lui r20, c
-|  srai r20, r20, 16
-|  lxbu a, b, r20
-|.endmacro
-|
 |.macro addxi, a, b, c
 |  lui r20, c
 |  srai r20, r20, 16
