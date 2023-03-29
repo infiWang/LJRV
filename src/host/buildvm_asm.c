@@ -258,6 +258,9 @@ void emit_asm(BuildCtx *ctx)
 #if LJ_TARGET_MIPS
   fprintf(ctx->fp, "\t.set nomips16\n\t.abicalls\n\t.set noreorder\n\t.set nomacro\n");
 #endif
+#if LJ_TARGET_RISCV64
+  fprintf(ctx->fp, ".option arch, -c\n.option norelax\n");
+#endif
   emit_asm_align(ctx, 4);
 
 #if LJ_TARGET_PS3
