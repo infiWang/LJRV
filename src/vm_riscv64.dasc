@@ -2864,11 +2864,10 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |// Either or both types are not numbers.
     |.if FFI
     |  // Check if RA or RD is a cdata.
-    |  li TMP0, LJ_TCDATA
-    |  bne CARG3, TMP0, >1
-    |  bne CARG4, TMP0, >1
-    |  j ->vmeta_equal_cd
-    |1:
+    |  xori TMP0, CARG3, LJ_TCDATA
+    |  xori TMP1, CARG4, LJ_TCDATA
+    |  and TMP0, TMP0, TMP1
+    |  bxeqz TMP0, ->vmeta_equal_cd
     |.endif
     |  lui TMP3, (-(BCBIAS_J*4 >> 12)) & 0xfffff		// -BCBIAS_J*4
     |  decode_BC4b TMP2
