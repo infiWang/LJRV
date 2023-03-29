@@ -268,10 +268,6 @@
 |  add a, x31, b
 |.endmacro
 |
-|.macro liw, a, b
-|  addiw a, x0, b
-|.endmacro
-|
 |.macro sext.b, a, b
 |  slli a, b, 56
 |  srai a, a, 56
@@ -496,7 +492,7 @@
 |.macro jmp_extern; jr CFUNCADDR; .endmacro
 |
 |// Set current VM state. Uses TMP0.
-|.macro li_vmstate, st; liw TMP0, ~LJ_VMST_..st; .endmacro
+|.macro li_vmstate, st; li TMP0, ~LJ_VMST_..st; .endmacro
 |.macro st_vmstate; sw TMP0, GL->vmstate; .endmacro
 |
 |.macro hotcheck, delta, target
@@ -606,7 +602,7 @@ static void build_subroutines(BuildCtx *ctx)
   |->vm_returnc:
   |  addiw RD, RD, 8			// RD = (nresults+1)*8.
   |  andi TMP0, PC, FRAME_TYPE
-  |  liw CRET1, LUA_YIELD
+  |  li CRET1, LUA_YIELD
   |  bxeqz RD, ->vm_unwind_c_eh
   |  mv MULTRES, RD
   |  bxeqz TMP0, ->BC_RET_Z		// Handle regular return to Lua.
@@ -690,7 +686,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CRET1, CARG2
   |->vm_unwind_c_eh:			// Landing pad for external unwinder.
   |  ld L, SAVE_L(sp)
-  |   liw TMP0, ~LJ_VMST_C
+  |   li TMP0, ~LJ_VMST_C
   |  ld GL, L->glref
   |  sw TMP0, GL->vmstate
   |  j ->vm_leave_unw
@@ -1289,7 +1285,7 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |.ffunc_1 type
   |  gettp TMP0, CARG1
-  |  liw TMP1, ~LJ_TISNUM
+  |  li TMP1, ~LJ_TISNUM
   |  sltu TMP2, TISNUM, TMP0
   |  not TMP3, TMP0
   |  bnez TMP2, >1
@@ -1325,7 +1321,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  slli TMP1, TMP1, 3
   |  sub TMP1, TMP0, TMP1
   |  add NODE:TMP2, NODE:TMP2, TMP1	// node = tab->node + (idx*32-idx*8)
-  |  liw CARG4, LJ_TSTR
+  |  li CARG4, LJ_TSTR
   |  settp STR:RC, CARG4		// Tagged key to look for.
   |3:  // Rearranged logic, because we expect _not_ to find the key.
   |  ld TMP0, NODE:TMP2->key
@@ -1437,7 +1433,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CARG1, TISNIL
   |  bxeqz TMP1, ->fff_restv		// End of traversal: return nil.
   |   ld CFUNC:RB, FRAME_FUNC(BASE)
-  |  liw RC, 2*8
+  |  li RC, 2*8
   |   cleartp CFUNC:RB
   |  j ->fff_fallback			// Invalid key.
   |
@@ -1659,7 +1655,7 @@ static void build_subroutines(BuildCtx *ctx)
   |.if resume
   |  addi TMP3, TMP3, -8
   |   mov_false TMP1
-  |   liw RD, (2+1)*8
+  |   li RD, (2+1)*8
   |   ld TMP0, 0(TMP3)
   |  sd TMP3, L:RA->top		// Remove error from coroutine stack.
   |  sd TMP0, 0(BASE)			// Copy error message.
@@ -1684,7 +1680,7 @@ static void build_subroutines(BuildCtx *ctx)
   |.ffunc coroutine_yield
   |  ld TMP0, L->cframe
   |   add TMP1, BASE, NARGS8:RC
-  |    liw CRET1, LUA_YIELD
+  |    li CRET1, LUA_YIELD
   |   sd BASE, L->base
   |  andi TMP0, TMP0, CFRAME_RESUME
   |   sd TMP1, L->top
@@ -1943,7 +1939,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   gettp TMP1, CARG1
   |  bxltz TMP0, ->fff_fallback
   |  cleartp STR:CARG1, CARG1
-  |   liw CARG4, -1
+  |   li CARG4, -1
   |  beqz TMP0, >1
   |   sext.w CARG4, CARG3
   |  checkint CARG3, ->fff_fallback
@@ -2900,13 +2896,13 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  beqz TAB:TMP3, <1		// No metatable?
       |  lbu TMP3, TAB:TMP3->nomm
       |  andi TMP3, TMP3, 1<<MM_eq
-      |  liw TMP0, 0		// ne = 0
+      |  li TMP0, 0		// ne = 0
       |  bnez TMP3, <1			// Or 'no __eq' flag set?
     } else {
       |  beqz TAB:TMP3,->BC_ISEQV_Z	// No metatable?
       |  lbu TMP3, TAB:TMP3->nomm
       |  andi TMP3, TMP3, 1<<MM_eq
-      |  liw TMP0, 1		// ne = 1
+      |  li TMP0, 1		// ne = 1
       |  bnez TMP3, ->BC_ISEQV_Z	// Or 'no __eq' flag set?
     }
     |  j ->vmeta_equal			// Handle __eq metamethod.
@@ -2925,7 +2921,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  gettp CARG3, CARG1
     |  li TMP1, LJ_TCDATA
     |.endif
-    |  liw TMP0, LJ_TSTR
+    |  li TMP0, LJ_TSTR
     |   decode_BC4b TMP2
     |   settp CARG2, TMP0
     |   lui TMP3, (-(BCBIAS_J*4 >> 12)) & 0xfffff		// -BCBIAS_J*4
@@ -3373,7 +3369,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_KSTR:
     |  // RA = dst*8, RD = str_const*8 (~)
     |  sub TMP1, KBASE, RD
-    |   liw TMP2, LJ_TSTR
+    |   li TMP2, LJ_TSTR
     |  ld TMP0, -8(TMP1)		// KBASE-8-str_const*8
     |  add RA, BASE, RA
     |   settp TMP0, TMP2
@@ -4609,7 +4605,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
 
   case BC_IFUNCV:
     |  // BASE = new base, RA = BASE+framesize*8, RB = LFUNC, RC = nargs*8
-    |   liw TMP0, LJ_TFUNC
+    |   li TMP0, LJ_TFUNC
     |   add TMP1, BASE, RC
     |  ld TMP2, L->maxstack
     |   settp LFUNC:RB, TMP0
