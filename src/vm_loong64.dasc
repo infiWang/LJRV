@@ -213,6 +213,16 @@
 |  bgtz a, tgt
 |.endmacro
 |
+|.macro lxi, a, b
+|  lui a, (b)&0xffff
+|  srai a, a, 16
+|.endmacro
+|
+|.macro lzi, a, b
+|  lui a, (b)&0xffff
+|  srli a, a, 16
+|.endmacro
+|
 |.macro addxi, a, b, c
 |  lui r20, c
 |  srai r20, r20, 16
@@ -3431,7 +3441,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     if (op == BC_TNEW) {
       |  srliw CARG2, RD, 3
       |  andi CARG2, CARG2, 0x7ff
-      |  ori TMP0, x0, 0x801
+      |  lzi TMP0, 0x801
       |  addiw TMP2, CARG2, -0x7ff
       |   srliw CARG3, RD, 14
       |  seqz TMP4, TMP2
