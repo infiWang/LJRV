@@ -45,9 +45,9 @@
 |
 |.define TMP0,		x6
 |.define TMP1,		x7
-|.define TMP2,		x26
-|.define TMP3,		x27
-|.define TMP4,		x28
+|.define TMP2,		x28
+|.define TMP3,		x29
+|.define TMP4,		x30
 |
 |// RISC-V lp64d calling convention.
 |.define CFUNCADDR,	x5
@@ -286,54 +286,6 @@
 |.macro zext.w, a, b
 |  slli a, b, 32
 |  srli a, a, 32
-|.endmacro
-|
-|.macro rol, a, b, c
-|  neg x29, c
-|  sll x30, b, c
-|  srl x31, b, x29
-|  or a, x30, x31
-|.endmacro
-|
-|.macro ror, a, b, c
-|  neg x29, c
-|  srl x30, b, c
-|  sll x31, b, x29
-|  or a, x30, x31
-|.endmacro
-|
-|.macro rolw, a, b, c
-|  neg x29, c
-|  sllw x30, b, c
-|  srlw x31, b, x29
-|  or a, x30, x31
-|.endmacro
-|
-|.macro rorw, a, b, c
-|  neg x29, c
-|  srlw x30, b, c
-|  sllw x31, b, x29
-|  or a, x30, x31
-|.endmacro
-|
-|.macro roli, a, b, c
-|  li x30, (c)&0xfffff
-|  rol a, b, x30
-|.endmacro
-|
-|.macro rori, a, b, c
-|  li x30, (c)&0xfffff
-|  ror a, b, x30
-|.endmacro
-|
-|.macro roliw, a, b, c
-|  li x30, (c)&0xfffff
-|  rolw a, b, x30
-|.endmacro
-|
-|.macro roriw, a, b, c
-|  li x30, (c)&0xfffff
-|  rorw a, b, x30
 |.endmacro
 |
 |.macro bfextri, a, b, c, d
@@ -2095,8 +2047,29 @@ static void build_subroutines(BuildCtx *ctx)
   |.ffunc_bit_sh lshift, sllw
   |.ffunc_bit_sh rshift, srlw
   |.ffunc_bit_sh arshift, sraw
-  |.ffunc_bit_sh rol, rolw
-  |.ffunc_bit_sh ror, rorw
+  |
+  |.macro .ffunc_bit_rot, name, rotinsa, rotinsb
+  |  .ffunc_2 bit_..name
+  |  gettp TMP0, CARG1
+  |  beq TMP0, TISNUM, >1
+  |   sltiu TMP1, TMP0, LJ_TISNUM
+  |  jal ->vm_tobit_fb
+  |//  mv CARG1, CRET1		// CARG1 = CRET1
+  |1:
+  |  gettp TMP0, CARG2
+  |   zext.w CARG2, CARG2
+  |  bxne TMP0, TISNUM, ->fff_fallback
+  |  sext.w CARG1, CARG1
+  |  neg TMP2, CARG2
+  |  rotinsa TMP1, CARG1, CARG2
+  |  rotinsb TMP0, CARG1, TMP2
+  |  or CRET1, TMP0, TMP1
+  |   zext.w CRET1, CRET1
+  |  j ->fff_resi
+  |.endmacro
+  |
+  |.ffunc_bit_rot rol, sllw, srlw
+  |.ffunc_bit_rot ror, srlw, sllw
   |
   |//-----------------------------------------------------------------------
   |
