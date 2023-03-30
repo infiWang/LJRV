@@ -1122,7 +1122,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd PC, SAVE_PC(sp)
   |  mv CARG3, RB
   |  mv CARG4, RC
-  |  decode_OP1 CARG5, INS	// CARG5 == RB.
+  |  decode_OP1 CARG5, INS
   |  jal extern lj_meta_arith		// (lua_State *L, TValue *ra,*rb,*rc, BCReg op)
   |  // Returns NULL (finished) or TValue * (metamethod).
   |  bxeqz CRET1, ->cont_nop
