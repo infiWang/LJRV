@@ -268,16 +268,18 @@ static int asm_fusemadd(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns riscv
 {
   IRRef lref = ir->op1, rref = ir->op2;
   IRIns *irm;
-  if (lref != rref &&
+  if ((as->flags & JIT_F_OPT_FMA) &&
+      lref != rref &&
       ((mayfuse(as, lref) && (irm = IR(lref), irm->o == IR_MUL) &&
        ra_noreg(irm->r)) ||
        (mayfuse(as, rref) && (irm = IR(rref), irm->o == IR_MUL) &&
        (rref = lref, riscvi = riscvir, ra_noreg(irm->r))))) {
     Reg dest = ra_dest(as, ir, RSET_FPR);
     Reg add = ra_hintalloc(as, rref, dest, RSET_FPR);
-    Reg left = ra_alloc2(as, irm, rset_exclude(rset_exclude(RSET_FPR, dest), add));
+    Reg left = ra_alloc2(as, irm,
+       rset_exclude(rset_exclude(RSET_FPR, dest), add));
     Reg right = (left >> 8); left &= 255;
-    emit_ds1s2s3(as, riscvi, (dest & 0x1f), (left & 0x1f), (right & 0x1f), (add & 0x1f));
+    emit_ds1s2s3(as, riscvi, dest, left, right, add);
     return 1;
   }
   return 0;
