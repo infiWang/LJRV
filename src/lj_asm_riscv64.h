@@ -1215,7 +1215,19 @@ static void asm_fpunary(ASMState *as, IRIns *ir, RISCVIns riscvi)
 {
   Reg dest = ra_dest(as, ir, RSET_FPR);
   Reg left = ra_hintalloc(as, ir->op1, dest, RSET_FPR);
-  emit_ds(as, riscvi, dest, left);
+  switch(riscvi) {
+    case RISCVI_FSQRT_S: case RISCVI_FSQRT_D:
+      emit_ds(as, riscvi, dest, left);
+      break;
+    case RISCVI_FMV_S: case RISCVI_FMV_D:
+    case RISCVI_FABS_S: case RISCVI_FABS_D:
+    case RISCVI_FNEG_S: case RISCVI_FNEG_D:
+      emit_ds1s2(as, riscvi, dest, left, left);
+      break;
+    default:
+      lj_assertA(0, "bad fp unary instruction");
+      return;
+  }
 }
 
 static void asm_fpmath(ASMState *as, IRIns *ir)
