@@ -2356,6 +2356,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  ld L, GL->cur_L
   |  ld BASE, GL->jit_base
   |  srli ra, ra, 12
+  |  srli TMP1, TMP1, 12
   |  sd L, (offsetof(jit_State, L)-2047)(CARG2)
   |  sw ra, (offsetof(jit_State, parent)-2047)(CARG2)	// Store trace number.
   |  sd BASE, L->base

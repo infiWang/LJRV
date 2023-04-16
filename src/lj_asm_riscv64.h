@@ -138,7 +138,7 @@ static void asm_guard(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2)
     target = p - 1;  /* Patch target later in asm_loop_fixup. */
   }
     emit_branch(as, riscvi, rs1, rs2, target);
-    emit_dsi(as, RISCVI_ADDI, RID_TMP, RID_ZERO, as->snapno);  /* TODO: overflow? */
+    emit_du(as, RISCVI_LUI, RID_TMP, as->snapno);
 }
 
 /* -- Operand fusion ------------------------------------------------------ */
@@ -1914,8 +1914,7 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
   MCode *px = exitstub_trace_addr(T, exitno);
   MCode *cstart = NULL;
   MCode *mcarea = lj_mcode_patch(J, p, 0);
-  MCode exitload = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_ZERO) |
-                   RISCVF_IMMI(exitno);
+  MCode exitload = RISCVI_LUI | RISCVF_D(RID_TMP) | RISCVF_IMMU(exitno);
 
   for (; p < pe; p++) {
     if (*p == exitload) {  /* Look for load of exit number. */
