@@ -102,30 +102,22 @@ static void asm_exitstub_setup(ASMState *as)
   MCode *mxp = as->mctop;
   if (as->mcp == mxp)
     --as->mcp;
-  /* sw TMP, 0(sp); li TMP, traceno; jr ->vm_exit_handler;*/
-  *--mxp = RISCVI_JALR | RISCVF_S1(RID_CFUNCADDR);
-  *--mxp = RISCVI_ADDI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR)
+  /* sw TMP, 0(sp); jalr ->vm_exit_handler; lui x0, traceno;*/
+  *--mxp = RISCVI_LUI | RISCVF_IMMU(as->T->traceno);
+  *--mxp = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_TMP);
+  *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
             | RISCVF_IMMI(((uintptr_t)(void *)lj_vm_exit_handler) & 0x3ff);
-  *--mxp = RISCVI_SLLI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_SHAMT(10);
-  *--mxp = RISCVI_ADDI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR)
+  *--mxp = RISCVI_SLLI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP) | RISCVF_SHAMT(10);
+  *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
             | RISCVF_IMMI(((uintptr_t)(void *)lj_vm_exit_handler >> 10) & 0x7ff);
-  *--mxp = RISCVI_SLLI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_SHAMT(11);
-  *--mxp = RISCVI_ADDI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR)
+  *--mxp = RISCVI_SLLI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP) | RISCVF_SHAMT(11);
+  *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
             | RISCVF_IMMI(((uintptr_t)(void *)lj_vm_exit_handler >> 21) & 0x7ff);
-  *--mxp = RISCVI_SLLI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_SHAMT(11);
-  *--mxp = RISCVI_ADDI | RISCVF_D(RID_CFUNCADDR) | RISCVF_S1(RID_CFUNCADDR)
+  *--mxp = RISCVI_SLLI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP) | RISCVF_SHAMT(11);
+  *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
             | RISCVF_IMMI(RISCVF_LO(((uintptr_t)(void *)lj_vm_exit_handler) >> 32));
-  *--mxp = RISCVI_LUI | RISCVF_D(RID_CFUNCADDR)
+  *--mxp = RISCVI_LUI | RISCVF_D(RID_TMP)
             | RISCVF_IMMU(RISCVF_HI(((uintptr_t)(void *)lj_vm_exit_handler) >> 32));
-  if (checki12(as->T->traceno)) {
-    *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_ZERO)
-              | RISCVF_IMMI(as->T->traceno);
-  } else {
-    *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
-              | RISCVF_IMMI(RISCVF_LO(as->T->traceno));
-    *--mxp = RISCVI_LUI | RISCVF_D(RID_TMP)
-              | RISCVF_IMMU(RISCVF_HI(as->T->traceno));
-  }
   *--mxp = RISCVI_SW | RISCVF_S2(RID_TMP) | RISCVF_S1(RID_SP);
   as->mctop = mxp;
 }
