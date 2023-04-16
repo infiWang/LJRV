@@ -2350,10 +2350,12 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi CARG1, GL, GG_G2J
   |  // addi CARG2, CARG1, 1		// We don't care what's on the verge.
   |  addi CARG2, CARG1, 2047		// jit_State too large.
+  |  lw ra, 0(ra)			// Load trace number.
   |  lw TMP1, 0(TMP2)			// Load exit number.
   |  st_vmstate
   |  ld L, GL->cur_L
   |  ld BASE, GL->jit_base
+  |  srli ra, ra, 12
   |  sd L, (offsetof(jit_State, L)-2047)(CARG2)
   |  sw ra, (offsetof(jit_State, parent)-2047)(CARG2)	// Store trace number.
   |  sd BASE, L->base
