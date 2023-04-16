@@ -1367,10 +1367,10 @@ static void asm_mulov(ASMState *as, IRIns *ir)
   tmp2 = ra_scratch(as, RSET_GPR &  ~(RID2RSET(left)|RID2RSET(right)
                                      |RID2RSET(dest)|RID2RSET(tmp1)));
   asm_guard(as, RISCVI_BNE, tmp1, tmp2);
-  emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);
   emit_dsshamt(as, RISCVI_SRAIW, tmp2, dest, 31);
-  emit_ds1s2(as, RISCVI_MUL, tmp1, left, right);	// tmp: [63:32]
+  emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);	// tmp1: [63:32]
   emit_ds1s2(as, RISCVI_MULW, dest, left, right);	// dest: [31:0]+signextend
+  emit_ds1s2(as, RISCVI_MUL, tmp1, left, right);	// tmp1: [63:0]?
 }
 
 static void asm_bnot(ASMState *as, IRIns *ir)
