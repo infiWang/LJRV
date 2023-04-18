@@ -1514,19 +1514,19 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
     if (as->flags & JIT_F_RVB) {
       emit_ds1s2(as, ismax ? RISCVI_MAX : RISCVI_MIN, dest, left, right);
     } else {
-      emit_ds1s2(as, RISCVI_OR, dest, dest, RID_TMP);
+      emit_ds1s2(as, RISCVI_OR, dest, dest, RID_TMP); 
       if (dest != right) {
-  emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP, left);
-  emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
-  emit_ds1s2(as, RISCVI_AND, dest, right, RID_TMP);
-      } else {
-  emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP, right);
+  emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP,right); 
   emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
   emit_ds1s2(as, RISCVI_AND, dest, left, RID_TMP);
+      } else {
+  emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP, left); 
+  emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
+  emit_ds1s2(as, RISCVI_AND, dest, right, RID_TMP);
       }
       emit_ds2(as, RISCVI_NEG, RID_TMP, RID_TMP);
       emit_ds1s2(as, RISCVI_SLT, RID_TMP,
-	       ismax ? left : right, ismax ? right : left);
+         ismax ? right : left, ismax ? left : right);
     }
   }
 }
