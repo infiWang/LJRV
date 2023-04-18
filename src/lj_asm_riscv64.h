@@ -1543,18 +1543,19 @@ static void asm_fpcomp(ASMState *as, IRIns *ir, RegSet allow)
   Reg right, left = ra_alloc2(as, ir, RSET_FPR);
   right = (left >> 8); left &= 255;
   Reg tmp = ra_scratch(as, allow);
-  asm_guard(as, (op&1) ? RISCVI_BNE : RISCVI_BEQ, tmp, RID_ZERO);
+  asm_guard(as, (op < IR_EQ ? (op&4) : (op&1))
+            ? RISCVI_BNE : RISCVI_BEQ, tmp, RID_ZERO);
   switch (op) {
     case IR_LT: case IR_UGE:
       emit_ds1s2(as, RISCVI_FLT_D, tmp, left, right);
-      break;
-    case IR_GE: case IR_ULT:
-      emit_ds1s2(as, RISCVI_FLT_D, tmp, right, left);
       break;
     case IR_LE: case IR_UGT: case IR_ABC:
       emit_ds1s2(as, RISCVI_FLE_D, tmp, left, right);
       break;
     case IR_GT: case IR_ULE:
+      emit_ds1s2(as, RISCVI_FLT_D, tmp, right, left);
+      break;
+    case IR_GE: case IR_ULT:
       emit_ds1s2(as, RISCVI_FLE_D, tmp, right, left);
       break;
     case IR_EQ: case IR_NE:
