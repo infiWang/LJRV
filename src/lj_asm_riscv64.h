@@ -749,11 +749,11 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     } else {  /* Must match with hash*() in lj_tab.c. */
       emit_ds1s2(as, RISCVI_SUBW, tmp1, tmp1, tmp2);
       emit_roti(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT3)&0x1f, allow);
-      emit_ds1s2(as, RISCVI_XOR, tmp1, tmp2, tmp1);
-      emit_roti(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT2-HASH_ROT1)&0x1f, allow);
+      emit_ds1s2(as, RISCVI_XOR, tmp1, tmp1, tmp2);
+      emit_roti(as, RISCVI_RORIW, tmp1, tmp1, (-HASH_ROT2-HASH_ROT1)&0x1f, allow);
       emit_ds1s2(as, RISCVI_SUBW, tmp2, tmp2, dest);
       emit_ds1s2(as, RISCVI_XOR, tmp2, tmp2, tmp1);
-      emit_roti(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT1)&0x1f, allow);
+      emit_roti(as, RISCVI_RORIW, dest, tmp1, (-HASH_ROT1)&0x1f, allow);
       if (irt_isnum(kt)) {
 	emit_dsshamt(as, RISCVI_SLLIW, tmp1, tmp1, 1);
 	emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);	// hi
