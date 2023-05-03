@@ -706,7 +706,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
   }
   if (irt_isnum(kt)) {
     emit_branch(as, RISCVI_BNE, tmp1, RID_ZERO, l_end);
-    emit_loadk32(as, RID_TMP, as->snapno);
+    emit_du(as, RISCVI_LUI, RID_TMP, as->snapno);
     emit_ds1s2(as, RISCVI_FEQ_D, tmp1, tmpnum, key);
     emit_branch(as, RISCVI_BEQ, tmp1, RID_ZERO, l_next);
     emit_dsi(as, RISCVI_SLTIU, tmp1, tmp1, ((int32_t)LJ_TISNUM));
@@ -714,7 +714,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     emit_ds(as, RISCVI_FMV_D_X, tmpnum, tmp1);
   } else {
     emit_branch(as, RISCVI_BEQ, tmp1, cmp64, l_end);
-    emit_loadk32(as, RID_TMP, as->snapno);
+    emit_du(as, RISCVI_LUI, RID_TMP, as->snapno);
   }
   emit_lso(as, RISCVI_LD, tmp1, dest, (int32_t)offsetof(Node, key.u64));
   *l_loop = RISCVI_BNE | RISCVF_S1(tmp1) | RISCVF_S2(RID_ZERO)
