@@ -447,7 +447,7 @@ static void asm_tobit(ASMState *as, IRIns *ir)
   Reg left = ra_alloc1(as, ir->op1, allow);
   Reg right = ra_alloc1(as, ir->op2, rset_clear(allow, left));
   Reg tmp = ra_scratch(as, rset_clear(allow, right));
-  emit_ds(as, RISCVI_FMV_X_D, dest, tmp);
+  emit_ds(as, RISCVI_FMV_X_W, dest, tmp);
   emit_ds1s2(as, RISCVI_FADD_D, tmp, left, right);
 }
 
