@@ -1767,9 +1767,9 @@ static void asm_loop_fixup(ASMState *as)
 {
   MCode *p = as->mctop;
   MCode *target = as->mcp;
-  ptrdiff_t delta = (char *)target - (char *)(p - 3);
+  ptrdiff_t delta;
   if (as->loopinv) {  /* Inverted loop branch? */
-    // delta = target - (p - 1);
+    delta = (char *)target - (char *)(p - 3);
     /* asm_guard* already inverted the branch, and patched the final b. */
     lj_assertA(checki21(delta), "branch target out of range");
     p[-1] = RISCVI_NOP;
@@ -1782,7 +1782,7 @@ static void asm_loop_fixup(ASMState *as)
     }
   } else {
     /* J */
-    // delta = target - (p - 1);
+    delta = (char *)target - (char *)(p - 1);
     p[-1] = RISCVI_JAL | RISCVF_IMMJ(delta);
   }
 }
