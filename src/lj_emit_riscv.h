@@ -324,8 +324,8 @@ static void emit_call(ASMState *as, void *target, int needcfa)
     *--p = RISCVI_NOP;
     *--p = RISCVI_JAL | RISCVF_D(RID_RA) | RISCVF_IMMJ(delta);
   } else if (checki32(delta)) {
-    *--p = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_IMMI(RISCVF_LO(delta));
-    *--p = RISCVI_AUIPC | RISCVF_D(RID_CFUNCADDR) | RISCVF_IMMU(RISCVF_HI(delta));
+    *--p = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
+    *--p = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
     needcfa = 1;
   } else {
     *--p = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_CFUNCADDR) | RISCVF_IMMI(0);
@@ -333,9 +333,7 @@ static void emit_call(ASMState *as, void *target, int needcfa)
   }
   as->mcp = p;
   if (needcfa > 1)
-    ra_allockreg(as, (intptr_t)target, RID_CFUNCADDR); 
-  else if (needcfa > 0)
-    ra_scratch(as, RID2RSET(RID_CFUNCADDR));
+    ra_allockreg(as, (intptr_t)target, RID_CFUNCADDR);
 }
 
 /* -- Emit generic operations --------------------------------------------- */
