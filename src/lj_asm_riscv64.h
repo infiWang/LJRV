@@ -1648,11 +1648,12 @@ static void asm_hiop(ASMState *as, IRIns *ir)
 static void asm_prof(ASMState *as, IRIns *ir)
 {
   UNUSED(ir);
-  asm_guard(as, RISCVI_BNE, RID_TMP, RID_ZERO);
-  emit_opk(as, RISCVI_ANDI, RID_TMP, RID_TMP, HOOK_PROFILE,
-           RSET_GPR);
-  emit_lsglptr(as, RISCVI_LBU, RID_TMP,
-               (int32_t)offsetof(global_State, hookmask));
+  Reg tmp = ra_scratch(as, RSET_GPR);
+  asm_guard(as, RISCVI_BNE, tmp, RID_ZERO);
+  emit_opk(as, RISCVI_ANDI, tmp, tmp, HOOK_PROFILE,
+           rset_exclude(RSET_GPR, tmp));
+  emit_lsglptr(as, RISCVI_LBU, tmp,
+         (int32_t)offsetof(global_State, hookmask));
 }
 
 /* -- Stack handling ------------------------------------------------------ */
