@@ -307,9 +307,8 @@ static void emit_jmp(ASMState *as, MCode *target)
     *--p = RISCVI_NOP;
     *--p = RISCVI_JAL | RISCVF_IMMJ(delta);
   } else {
-    Reg cfa = ra_scratch(as, RID2RSET(RID_CFUNCADDR));
-    *--p = RISCVI_JALR | RISCVF_S1(cfa) | RISCVF_IMMI(RISCVF_LO(delta));
-    *--p = RISCVI_AUIPC | RISCVF_D(cfa) | RISCVF_IMMU(RISCVF_HI(delta));
+    *--p = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
+    *--p = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
   }
   as->mcp = p;
 }
