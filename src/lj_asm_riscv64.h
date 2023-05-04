@@ -1852,9 +1852,8 @@ static void asm_tail_fixup(ASMState *as, TraceNo lnk)
     p[-2] = RISCVI_JAL | RISCVF_IMMJ(delta);
     p[-1] = RISCVI_NOP;
   } else {
-    Reg cfa = ra_scratch(as, RID2RSET(RID_CFUNCADDR));
-    p[-2] = RISCVI_AUIPC | RISCVF_D(cfa) | RISCVF_IMMU(RISCVF_HI(delta));
-    p[-1] = RISCVI_JALR | RISCVF_S1(cfa) | RISCVF_IMMI(RISCVF_LO(delta));
+    p[-2] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
+    p[-1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
   }
 }
 
