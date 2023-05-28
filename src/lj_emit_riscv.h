@@ -95,14 +95,13 @@ static void emit_lso(ASMState *as, RISCVIns riscvi, Reg data, Reg base, int32_t 
   }
 }
 
-static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t shamt, RegSet allow)
+static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t shamt)
 {
   if (as->flags & JIT_F_RVB) {
     emit_dsshamt(as, riscvi, rd, rs1, shamt);
   } else {
     RISCVIns ai, bi;
     int32_t shwid, shmsk;
-    Reg tmp = ra_scratch(as, rset_exclude(allow, rd));
     switch (riscvi) {
       case RISCVI_RORI:
         ai = RISCVI_SRLI, bi = RISCVI_SLLI;
@@ -116,19 +115,18 @@ static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t sh
         lj_assertA(0, "invalid roti op");
         return;
     }
-    emit_ds1s2(as, RISCVI_OR, rd, rd, tmp);
-    emit_dsshamt(as, bi, tmp, rs1, (shwid - shamt)&shmsk);
+    emit_ds1s2(as, RISCVI_OR, rd, rd, RID_TMP);
+    emit_dsshamt(as, bi, RID_TMP, rs1, (shwid - shamt)&shmsk);
     emit_dsshamt(as, ai, rd, rs1, shamt&shmsk);
   }
 }
 
-static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2, RegSet allow)
+static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2)
 {
   if (as->flags & JIT_F_RVB) {
     emit_ds1s2(as, riscvi, rd, rs1, rs2);
   } else {
     RISCVIns sai, sbi;
-    Reg tmp = ra_scratch(as, rset_exclude(allow, rd));
     switch (riscvi) {
       case RISCVI_ROL:
         sai = RISCVI_SLL, sbi = RISCVI_SRL;
@@ -146,10 +144,17 @@ static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2, Re
         lj_assertA(0, "invalid rot op");
         return;
     }
-    emit_ds1s2(as, RISCVI_OR, rd, rd, tmp);
-    emit_ds1s2(as, sbi, rd, rs1, rd);
-    emit_ds1s2(as, sai, tmp, rs1, rs2);
-    emit_ds2(as, RISCVI_NEG, rd, rs2);
+    if (rd == rs2) {
+      emit_ds1s2(as, RISCVI_OR, rd, rd, RID_TMP);
+      emit_ds1s2(as, sbi, RID_TMP, rs1, RID_TMP);
+      emit_ds1s2(as, sai, rd, rs1, rs2);
+      emit_ds2(as, RISCVI_NEG, RID_TMP, rs2);
+    } else {
+      emit_ds1s2(as, RISCVI_OR, rd, rd, RID_TMP);
+      emit_ds1s2(as, sbi, rd, rs1, rd);
+      emit_ds1s2(as, sai, RID_TMP, rs1, rs2);
+      emit_ds2(as, RISCVI_NEG, rd, rs2);
+    }
   }
 }
 

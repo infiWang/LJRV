@@ -748,12 +748,12 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
       emit_lso(as, RISCVI_LW, tmp1, key, (int32_t)offsetof(GCstr, sid));
     } else {  /* Must match with hash*() in lj_tab.c. */
       emit_ds1s2(as, RISCVI_SUBW, tmp1, tmp1, tmp2);
-      emit_roti(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT3)&0x1f, allow);
+      emit_roti(as, RISCVI_RORIW, tmp2, tmp2, (-HASH_ROT3)&0x1f);
       emit_ds1s2(as, RISCVI_XOR, tmp1, tmp1, tmp2);
-      emit_roti(as, RISCVI_RORIW, tmp1, tmp1, (-HASH_ROT2-HASH_ROT1)&0x1f, allow);
+      emit_roti(as, RISCVI_RORIW, tmp1, tmp1, (-HASH_ROT2-HASH_ROT1)&0x1f);
       emit_ds1s2(as, RISCVI_SUBW, tmp2, tmp2, dest);
       emit_ds1s2(as, RISCVI_XOR, tmp2, tmp2, tmp1);
-      emit_roti(as, RISCVI_RORIW, dest, tmp1, (-HASH_ROT1)&0x1f, allow);
+      emit_roti(as, RISCVI_RORIW, dest, tmp1, (-HASH_ROT1)&0x1f);
       if (irt_isnum(kt)) {
 	emit_dsshamt(as, RISCVI_SLLIW, tmp1, tmp1, 1);
 	emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);	// hi
@@ -1462,7 +1462,7 @@ static void asm_bitshift(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns risc
         emit_dsshamt(as, riscvik, dest, left, shift);
         break;
       case RISCVI_RORI: case RISCVI_RORIW:
-        emit_roti(as, riscvik, dest, left, shift, RSET_GPR);
+        emit_roti(as, riscvik, dest, left, shift);
         break;
       default:
         lj_assertA(0, "bad shift instruction");
@@ -1477,7 +1477,7 @@ static void asm_bitshift(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns risc
         break;
       case RISCVI_ROR: case RISCVI_ROL:
       case RISCVI_RORW: case RISCVI_ROLW:
-        emit_rot(as, riscvi, dest, left, right, RSET_GPR);
+        emit_rot(as, riscvi, dest, left, right);
         break;
       default:
         lj_assertA(0, "bad shift instruction");
