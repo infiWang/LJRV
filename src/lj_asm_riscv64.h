@@ -129,17 +129,14 @@ static void asm_guard(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2)
   MCode *p = as->mcp;
   if (LJ_UNLIKELY(p == as->invmcp)) {
     as->loopinv = 1;
-    ++p;
+    as->mcp = ++p;
     *p = RISCVI_JAL | RISCVF_IMMJ((char *)target - (char *)p);
-    as->mcp = p;
-    riscvi = riscvi ^ 0x00001000;  /* Invert cond. */
+    riscvi = riscvi^RISCVF_FUNCT3(1);  /* Invert cond. */
     target = p - 1;  /* Patch target later in asm_loop_fixup. */
   }
-    // emit_branch(as, riscvi, rs1, rs2, target);
-    // emit_du(as, RISCVI_LUI, RID_TMP, as->snapno);
     ptrdiff_t delta = (char *)target - (char *)(p - 1);
     *--p = RISCVI_JAL | RISCVF_IMMJ(delta);
-    *--p = (riscvi^0x00001000) | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMB(8);
+    *--p = (riscvi^RISCVF_FUNCT3(1)) | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMB(8);
     as->mcp = p;
 }
 
