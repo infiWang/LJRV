@@ -97,48 +97,50 @@ static MCode *asm_sparejump_use(MCode *mcarea, ptrdiff_t target)
 }
 
 /* Setup exit stub after the end of each trace. */
-static void asm_exitstub_setup(ASMState *as)
+static void asm_exitstub_setup(ASMState *as, ExitNo nexits)
 {
+  ExitNo i;
   MCode *mxp = as->mctop;
-  if (as->mcp == mxp)
-    --as->mcp;
-  /* sw TMP, 0(sp); jalr ->vm_exit_handler; lui x0, traceno;*/
+  if (mxp - (nexits + 4 + MCLIM_REDZONE) < as->mclim)
+    asm_mclimit(as);
+  for (i = nexits-1; (int32_t)i >= 0; i--)
+    *--mxp = RISCVI_JAL | RISCVF_D(RID_RA) | RISCVF_IMMJ((uintptr_t)(4*(-4-i)));
+  ptrdiff_t delta = (char *)lj_vm_exit_handler - (char *)(mxp-3);
+  /* 1: sw ra, 0(sp); auipc+jalr ->vm_exit_handler; lui x0, traceno; jal <1; jal <1; ... */
   *--mxp = RISCVI_LUI | RISCVF_IMMU(as->T->traceno);
-  *--mxp = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_TMP);
-  *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
-            | RISCVF_IMMI(((uintptr_t)(void *)lj_vm_exit_handler) & 0x3ff);
-  *--mxp = RISCVI_SLLI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP) | RISCVF_SHAMT(10);
-  *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
-            | RISCVF_IMMI(((uintptr_t)(void *)lj_vm_exit_handler >> 10) & 0x7ff);
-  *--mxp = RISCVI_SLLI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP) | RISCVF_SHAMT(11);
-  *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
-            | RISCVF_IMMI(((uintptr_t)(void *)lj_vm_exit_handler >> 21) & 0x7ff);
-  *--mxp = RISCVI_SLLI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP) | RISCVF_SHAMT(11);
-  *--mxp = RISCVI_ADDI | RISCVF_D(RID_TMP) | RISCVF_S1(RID_TMP)
-            | RISCVF_IMMI(RISCVF_LO(((uintptr_t)(void *)lj_vm_exit_handler) >> 32));
-  *--mxp = RISCVI_LUI | RISCVF_D(RID_TMP)
-            | RISCVF_IMMU(RISCVF_HI(((uintptr_t)(void *)lj_vm_exit_handler) >> 32));
-  *--mxp = RISCVI_SW | RISCVF_S2(RID_TMP) | RISCVF_S1(RID_SP);
+  *--mxp = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_TMP)
+         | RISCVF_IMMI(RISCVF_LO((uintptr_t)(void *)delta));
+  *--mxp = RISCVI_AUIPC | RISCVF_D(RID_TMP)
+         | RISCVF_IMMU(RISCVF_HI((uintptr_t)(void *)delta));
+  *--mxp = RISCVI_SD | RISCVF_S2(RID_RA) | RISCVF_S1(RID_SP);
   as->mctop = mxp;
 }
 
-/* Keep this in-sync with exitstub_trace_addr(). */
-#define asm_exitstub_addr(as)	((as)->mctop)
+static MCode *asm_exitstub_addr(ASMState *as, ExitNo exitno)
+{
+  /* Keep this in-sync with exitstub_trace_addr(). */
+  return as->mctop + exitno + 4;
+}
 
 /* Emit conditional branch to exit for guard. */
 static void asm_guard(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2)
 {
-  MCode *target = asm_exitstub_addr(as);
+  MCode *target = asm_exitstub_addr(as, as->snapno);
   MCode *p = as->mcp;
   if (LJ_UNLIKELY(p == as->invmcp)) {
-    // as->invmcp = NULL;
     as->loopinv = 1;
+    ++p;
+    *p = RISCVI_JAL | RISCVF_IMMJ((char *)target - (char *)p);
     as->mcp = p;
     riscvi = riscvi ^ 0x00001000;  /* Invert cond. */
     target = p - 1;  /* Patch target later in asm_loop_fixup. */
   }
-    emit_branch(as, riscvi, rs1, rs2, target);
-    emit_du(as, RISCVI_LUI, RID_TMP, as->snapno);
+    // emit_branch(as, riscvi, rs1, rs2, target);
+    // emit_du(as, RISCVI_LUI, RID_TMP, as->snapno);
+    ptrdiff_t delta = (char *)target - (char *)(p - 1);
+    *--p = RISCVI_JAL | RISCVF_IMMJ(delta);
+    *--p = (riscvi^0x00001000) | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMB(8);
+    as->mcp = p;
 }
 
 /* -- Operand fusion ------------------------------------------------------ */
@@ -702,7 +704,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
 
   /* Type and value comparison. */
   if (merge == IR_EQ) {  /* Must match asm_guard(). */
-    l_end = asm_exitstub_addr(as);
+    l_end = asm_exitstub_addr(as, as->snapno);
   }
   if (irt_isnum(kt)) {
     emit_branch(as, RISCVI_BNE, tmp1, RID_ZERO, l_end);
@@ -1770,17 +1772,10 @@ static void asm_loop_fixup(ASMState *as)
   MCode *target = as->mcp;
   ptrdiff_t delta;
   if (as->loopinv) {  /* Inverted loop branch? */
-    delta = (char *)target - (char *)(p - 3);
+    delta = (char *)target - (char *)(p - 2);
     /* asm_guard* already inverted the branch, and patched the final b. */
     lj_assertA(checki21(delta), "branch target out of range");
-    p[-1] = RISCVI_NOP;
-    if (checki13(delta)) {
-      p[-2] = RISCVI_NOP;
-      p[-3] = p[-3] | RISCVF_IMMB(delta);
-    } else {
-      p[-2] |= RISCVF_IMMB(8);
-      p[-3] = RISCVI_JAL | RISCVF_IMMJ(delta);
-    }
+    p[-2] = (p[-2]&0x00000fff) | RISCVF_IMMJ(delta);
   } else {
     /* J */
     delta = (char *)target - (char *)(p - 1);
@@ -1848,13 +1843,8 @@ static void asm_tail_fixup(ASMState *as, TraceNo lnk)
   }
   /* Patch exit jump. */
   ptrdiff_t delta = (char *)target - (char *)(p - 2);
-  if (checki21(delta)) {
-    p[-2] = RISCVI_JAL | RISCVF_IMMJ(delta);
-    p[-1] = RISCVI_NOP;
-  } else {
-    p[-2] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
-    p[-1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
-  }
+  p[-2] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
+  p[-1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
 }
 
 /* Prepare tail of code. */
@@ -1867,7 +1857,7 @@ static void asm_tail_prep(ASMState *as)
     as->mcp = p-1;  /* Leave room for stack pointer adjustment. */
     as->invmcp = NULL;
   }
-  *p = RISCVI_NOP;  /* Prevent load/store merging. */
+  p[0] = p[1] = RISCVI_NOP;  /* Prevent load/store merging. */
 }
 
 /* -- Trace setup --------------------------------------------------------- */
@@ -1902,7 +1892,7 @@ static Reg asm_setup_call_slots(ASMState *as, IRIns *ir, const CCallInfo *ci)
 static void asm_setup_target(ASMState *as)
 {
   asm_sparejump_setup(as);
-  asm_exitstub_setup(as);
+  asm_exitstub_setup(as, as->T->nsnap + (as->parent ? 1 : 0));
 }
 
 /* -- Trace patching ------------------------------------------------------ */
@@ -1915,87 +1905,40 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
   MCode *px = exitstub_trace_addr(T, exitno);
   MCode *cstart = NULL;
   MCode *mcarea = lj_mcode_patch(J, p, 0);
-  MCode exitload = RISCVI_LUI | RISCVF_D(RID_TMP) | RISCVF_IMMU(exitno);
 
   for (; p < pe; p++) {
-    if (*p == exitload) {  /* Look for load of exit number. */
-      /* Look for exitstub branch, replace with branch to target. */
-      ptrdiff_t delta = (char *)target - (char *)(p+1);
-      if (((p[2] ^ RISCVF_IMMB((char *)px-(char *)(p+2))) & 0xfe000f80u) == 0 &&
-          ((p[2] & 0x0000007fu) == 0x63u) && p[-1] != RISCV_NOPATCH_GC_CHECK) {
-  lj_assertJ(checki32(delta), "branch target out of range");
-  /* Patch branch, if within range. */
-	patchbranch:
-  if (checki13(delta)) { /* Patch branch */
-    p[0] = RISCVI_NOP;
-    p[1] = (p[2] & 0x01fff07fu) | RISCVF_IMMB(delta);
-    p[2] = RISCVI_NOP;
-    if (!cstart) cstart = p + 2;
-  } else if (checki21(delta)) { /* Inverted branch with jump */
-    p[0] = ((p[2] ^ 0x00001000u) & 0x01fff07fu) | RISCVF_IMMB(8);
-    p[1] = RISCVI_JAL| RISCVF_IMMJ(delta);
-    p[2] = RISCVI_NOP;
-    if (!cstart) cstart = p + 2;
-  } else {  /* Branch out of range. Use spare jump slot in mcarea. */
-    MCode *mcjump = asm_sparejump_use(mcarea, target);
-    if (mcjump) {
-	    lj_mcode_sync(mcjump, mcjump+2);
-      delta = (char *)mcjump - (char *)(p+1);
-      if (checki21(delta)) {
-        goto patchbranch;
-      } else {
-        lj_assertJ(0, "spare jump out of range: -Osizemcode too big");
-      }
+    /* Look for exitstub branch, replace with branch to target. */
+    ptrdiff_t delta = (char *)target - (char *)(p+1);
+    if (((p[0] ^ RISCVF_IMMB(8)) & 0xfe000f80u) == 0 &&
+        ((p[0] & 0x0000007fu) == 0x63u) &&
+        ((p[1] ^ RISCVF_IMMJ((char *)px-(char *)(p+1))) & 0xfffff000u) == 0 &&
+        ((p[1] & 0x0000007fu) == 0x6fu) && p[-1] != RISCV_NOPATCH_GC_CHECK) {
+      lj_assertJ(checki32(delta), "branch target out of range");
+      /* Patch branch, if within range. */
+	    patchbranch:
+      if (checki21(delta)) { /* Patch jump */
+  p[1] = RISCVI_JAL | RISCVF_IMMJ(delta);
+  if (!cstart) cstart = p + 1;
+      } else {  /* Branch out of range. Use spare jump slot in mcarea. */
+  MCode *mcjump = asm_sparejump_use(mcarea, target);
+  if (mcjump) {
+	  lj_mcode_sync(mcjump, mcjump+2);
+    delta = (char *)mcjump - (char *)(p+1);
+    if (checki21(delta)) {
+      goto patchbranch;
+    } else {
+      lj_assertJ(0, "spare jump out of range: -Osizemcode too big");
     }
-	  /* Ignore jump slot overflow. Child trace is simply not attached. */
-  
-  // } else if (checki32(delta)) { /* In-place PCREL jump */
-  // /* NYI, need special setup AFAIK, complex w/o nop slots? */
-  //   p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) |
-  //          RISCVF_IMMI(RISCVF_LO(delta));
-  //   p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
-  //   p[-1] = ((ins ^ 0x00001000u) & 0x0000707fu) | RISCVF_IMMB(12);
-  //   if (!cstart) cstart = p + 2;
-  // }
   }
-      } else if (((p[1] ^ RISCVF_IMMB(8)) & 0xfe000f80u) == 0 &&
-                 ((p[1] & 0x0000007fu) == 0x63u) &&
-                 ((p[2] ^ RISCVF_IMMJ((char *)px-(char *)(p+2))) & 0xfffff000) == 0 &&
-                 ((p[2] & 0x0000007fu) == RISCVI_JAL) &&
-                 p[-1] != RISCV_NOPATCH_GC_CHECK) {
-  /* Patch long branch with jump, if within range. */
+	/* Ignore jump slot overflow. Child trace is simply not attached. */
+      }
+    } else if (p+2 == pe) {
+      if (p[0] == RISCVI_NOP && p[1] == RISCVI_NOP) {
+  ptrdiff_t delta = (char *)target - (char *)p;
   lj_assertJ(checki32(delta), "jump target out of range");
-  if(checki21(delta)) {
-    p[0] = (p[1] & 0x01fff07fu) | RISCVF_IMMB(12);
-    p[1] = (p[2] & 0x00000fffu) | RISCVF_IMMJ(delta);
-    p[2] = RISCVI_NOP;
-  } else if (checki32(delta)) {
-    p[0] = (p[1] & 0x01fff07fu) | RISCVF_IMMB(12);
-    p[1] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
-    p[2] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
-  }
+  p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
+  p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
   if (!cstart) cstart = p + 2;
-      } else if (((p[1] ^ RISCVF_IMMJ((char *)px-(char *)(p+1))) & 0xfffff000) == 0 &&
-    ((p[1] & 0x0000007fu) == RISCVI_JAL)) {
-  /* Patch jump, if within range. */
-  lj_assertJ(checki32(delta), "jump target out of range");
-  if (checki21(delta)) {
-    p[0] = RISCVI_NOP;
-    p[1] = (p[1] & 0x00000fffu) | RISCVF_IMMJ(delta);
-    if (!cstart) cstart = p + 1;
-  } else if (checki32(delta)) {
-    p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
-    p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
-    if (!cstart) cstart = p + 1;
-  }
-      } else if (p+2 == pe) {
-  if (p[2] == RISCVI_NOP) {
-    ptrdiff_t delta = (char *)target - (char *)p;
-    lj_assertJ(checki32(delta), "jump target out of range");
-    p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
-    p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
-    if (!cstart) cstart = p + 2;
-  }
       }
     }
   }

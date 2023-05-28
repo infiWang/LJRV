@@ -2343,22 +2343,24 @@ static void build_subroutines(BuildCtx *ctx)
   |  fsd f3, 3*8(sp)
   |  fsd f4, 4*8(sp)
   |  sd x0, 32*8+1*8(sp)		// Clear RID_TMP.
-  |  addi TMP2, sp, 32*8+32*8		// Recompute original value of sp.
-  |  sd TMP2, 32*8+2*8(sp)		// Store sp in RID_SP
-  |  li_vmstate EXIT
+  |  ld TMP1, 32*8+32*8(sp)			// Load exit pc.
+  |   addi TMP2, sp, 32*8+32*8		// Recompute original value of sp.
   |  addxi DISPATCH, GL, GG_G2DISP
+  |   sd TMP2, 32*8+2*8(sp)		// Store sp in RID_SP
   |  addi CARG1, GL, GG_G2J
+  |    li_vmstate EXIT
   |  // addi CARG2, CARG1, 1		// We don't care what's on the verge.
   |  addi CARG2, CARG1, 2047		// jit_State too large.
-  |  lw ra, 0(ra)			// Load trace number.
-  |  lw TMP1, 0(TMP2)			// Load exit number.
-  |  st_vmstate
+  |  sub TMP1, TMP1, ra
+  |   lw TMP2, 0(ra)			// Load trace number.
+  |    st_vmstate
+  |  srli TMP1, TMP1, 2
   |  ld L, GL->cur_L
   |  ld BASE, GL->jit_base
-  |  srli ra, ra, 12
-  |  srli TMP1, TMP1, 12
+  |  srli TMP2, TMP2, 12
+  |  addi TMP1, TMP1, -2
   |  sd L, (offsetof(jit_State, L)-2047)(CARG2)
-  |  sw ra, (offsetof(jit_State, parent)-2047)(CARG2)	// Store trace number.
+  |  sw TMP2, (offsetof(jit_State, parent)-2047)(CARG2)	// Store trace number.
   |  sd BASE, L->base
   |  sw TMP1, (offsetof(jit_State, exitno)-2047)(CARG2)	// Store exit number.
   |  sd x0, GL->jit_base
@@ -2366,9 +2368,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  jal extern lj_trace_exit		// (jit_State *J, ExitState *ex)
   |  // Returns MULTRES (unscaled) or negated error code.
   |  ld TMP1, L->cframe
-  |  li TMP2, -4
   |  ld BASE, L->base
-  |  and sp, TMP1, TMP2
+  |  andi sp, TMP1, CFRAME_RAWMASK
   |  ld PC, SAVE_PC(sp)		// Get SAVE_PC.
   |  sd L, SAVE_L(sp)			// Set SAVE_L (on-trace resume/yield).
   |  j >1
