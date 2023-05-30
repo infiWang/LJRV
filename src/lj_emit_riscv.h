@@ -151,9 +151,9 @@ static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2)
       emit_ds2(as, RISCVI_NEG, RID_TMP, rs2);
     } else {
       emit_ds1s2(as, RISCVI_OR, rd, rd, RID_TMP);
-      emit_ds1s2(as, sbi, rd, rs1, rd);
-      emit_ds1s2(as, sai, RID_TMP, rs1, rs2);
-      emit_ds2(as, RISCVI_NEG, rd, rs2);
+      emit_ds1s2(as, sai, rd, rs1, rs2);
+      emit_ds1s2(as, sbi, RID_TMP, rs1, RID_TMP);
+      emit_ds2(as, RISCVI_NEG, RID_TMP, rs2);
     }
   }
 }
