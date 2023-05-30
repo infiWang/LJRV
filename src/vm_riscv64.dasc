@@ -562,9 +562,8 @@ static void build_subroutines(BuildCtx *ctx)
   |->vm_return:
   |  // BASE = base, RA = resultptr, RD/MULTRES = (nresults+1)*8, PC = return
   |  // TMP0 = PC & FRAME_TYPE
-  |  li TMP2, -8		// TMP2 = 0xfffffff8
+  |  andi TMP2, PC, ~FRAME_TYPEP
   |  xori TMP0, TMP0, FRAME_C
-  |  and TMP2, PC, TMP2
   |  sub TMP2, BASE, TMP2		// TMP2 = previous base.
   |  bxnez TMP0, ->vm_returnp
   |
@@ -645,8 +644,7 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |->vm_unwind_ff:			// Unwind C stack, return from ff pcall.
   |  // (void *cframe)
-  |  li TMP3, CFRAME_RAWMASK
-  |  and sp, CARG1, TMP3
+  |  andi sp, CARG1, CFRAME_RAWMASK
   |->vm_unwind_ff_eh:			// Landing pad for external unwinder.
   |  ld L, SAVE_L(sp)
   |  lui TMP3, 0x59c00		// TOBIT = 2^52 + 2^51 (float).
@@ -1237,11 +1235,10 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |.ffunc_1 type
   |  gettp TMP0, CARG1
-  |  li TMP1, ~LJ_TISNUM
   |  sltu TMP2, TISNUM, TMP0
   |  not TMP3, TMP0
   |  bnez TMP2, >1
-  |  mv TMP3, TMP1
+  |  li TMP3, ~LJ_TISNUM
   |1:
   |  slli TMP3, TMP3, 3
   |  add TMP3, CFUNC:RB, TMP3
@@ -1622,7 +1619,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CARG1, L
   |  srliw CARG2, RD, 3
   |  jal extern lj_state_growstack	// (lua_State *L, int n)
-  |  li CRET1, 0
+  |  mv CRET1, x0
   |  j <4
   |.endmacro
   |
@@ -2101,8 +2098,7 @@ static void build_subroutines(BuildCtx *ctx)
   |// Reconstruct previous base for vmeta_call during tailcall.
   |->vm_call_tail:
   |  andi TMP0, PC, FRAME_TYPE
-  |  li TMP2, ~FRAME_TYPEP	// TODO
-  |   and TMP1, PC, TMP2
+  |   andi TMP1, PC, ~FRAME_TYPEP	// TODO
   |  bnez TMP0, >3
   |  lbu TMP1, OFS_RA(PC)
   |  slliw TMP1, TMP1, 3
@@ -2116,7 +2112,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   mv CARG1, L
   |  jal extern lj_state_growstack	// (lua_State *L, int n)
   |  ld BASE, L->base
-  |   li CRET1, 0		// Set zero-flag to force retry.
+  |   mv CRET1, x0		// Set zero-flag to force retry.
   |  j <1
   |
   |->fff_gcstep:			// Call GC step function.
@@ -4171,8 +4167,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  add TMP0, TMP0, TMP2
     |  ld TRACE:TMP2, 0(TMP0)
     |  lw TMP0, TRACE:TMP2->startins
-    |  li TMP3, -256
-    |  and TMP0, TMP0, TMP3
+    |  andi TMP0, TMP0, -256
     |  or TMP0, TMP0, TMP1
     |  sw TMP0, 0(PC)
     |  j <1
