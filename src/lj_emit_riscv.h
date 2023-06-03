@@ -116,8 +116,8 @@ static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t sh
         return;
     }
     emit_ds1s2(as, RISCVI_OR, rd, rd, RID_TMP);
-    emit_dsshamt(as, bi, RID_TMP, rs1, (shwid - shamt)&shmsk);
-    emit_dsshamt(as, ai, rd, rs1, shamt&shmsk);
+    emit_dsshamt(as, bi, rd, rs1, (shwid - shamt)&shmsk);
+    emit_dsshamt(as, ai, RID_TMP, rs1, shamt&shmsk);
   }
 }
 
