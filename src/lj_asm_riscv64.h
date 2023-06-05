@@ -73,7 +73,7 @@ static void asm_sparejump_setup(ASMState *as)
   }
 }
 
-static MCode *asm_sparejump_use(MCode *mcarea, ptrdiff_t target)
+static MCode *asm_sparejump_use(MCode *mcarea, MCode *target)
 {
   MCode *mxp = (MCode *)((char *)mcarea + ((MCLink *)mcarea)->size);
   int slot = RISCV_SPAREJUMP;
