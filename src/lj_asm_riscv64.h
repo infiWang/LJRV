@@ -1536,29 +1536,28 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
 /* -- Comparisons --------------------------------------------------------- */
 
 /* FP comparisons. */
-static void asm_fpcomp(ASMState *as, IRIns *ir, RegSet allow)
+static void asm_fpcomp(ASMState *as, IRIns *ir)
 {
   IROp op = ir->o;
   Reg right, left = ra_alloc2(as, ir, RSET_FPR);
   right = (left >> 8); left &= 255;
-  Reg tmp = ra_scratch(as, allow);
   asm_guard(as, (op < IR_EQ ? (op&4) : (op&1))
-            ? RISCVI_BNE : RISCVI_BEQ, tmp, RID_ZERO);
+            ? RISCVI_BNE : RISCVI_BEQ, RID_TMP, RID_ZERO);
   switch (op) {
     case IR_LT: case IR_UGE:
-      emit_ds1s2(as, RISCVI_FLT_D, tmp, left, right);
+      emit_ds1s2(as, RISCVI_FLT_D, RID_TMP, left, right);
       break;
     case IR_LE: case IR_UGT: case IR_ABC:
-      emit_ds1s2(as, RISCVI_FLE_D, tmp, left, right);
+      emit_ds1s2(as, RISCVI_FLE_D, RID_TMP, left, right);
       break;
     case IR_GT: case IR_ULE:
-      emit_ds1s2(as, RISCVI_FLT_D, tmp, right, left);
+      emit_ds1s2(as, RISCVI_FLT_D, RID_TMP, right, left);
       break;
     case IR_GE: case IR_ULT:
-      emit_ds1s2(as, RISCVI_FLE_D, tmp, right, left);
+      emit_ds1s2(as, RISCVI_FLE_D, RID_TMP, right, left);
       break;
     case IR_EQ: case IR_NE:
-      emit_ds1s2(as, RISCVI_FEQ_D, tmp, left, right);
+      emit_ds1s2(as, RISCVI_FEQ_D, RID_TMP, left, right);
       break;
     default:
       break;
@@ -1571,9 +1570,7 @@ static void asm_intcomp(ASMState *as, IRIns *ir)
   /* ORDER IR: LT GE LE GT  ULT UGE ULE UGT. */
   /*           00 01 10 11  100 101 110 111  */
   IROp op = ir->o;
-  RegSet allow = RSET_GPR;
-  Reg tmp, right, left = ra_alloc1(as, ir->op1, allow);
-  rset_clear(allow, left);
+  Reg right, left = ra_alloc1(as, ir->op1, RSET_GPR);
   if (op == IR_ABC) op = IR_UGT;
   if ((op&4) == 0 && irref_isk(ir->op2) && get_kval(as, ir->op2) == 0) {
     switch (op) {
@@ -1585,27 +1582,25 @@ static void asm_intcomp(ASMState *as, IRIns *ir)
     }
     return;
   }
-  tmp = ra_scratch(as, allow);
-  rset_clear(allow, tmp);
   if (irref_isk(ir->op2)) {
     intptr_t k = get_kval(as, ir->op2);
     if ((op&2)) k++;
     if (checki12(k)) {
-      asm_guard(as, (op&1) ? RISCVI_BNE : RISCVI_BEQ, tmp, RID_ZERO);
-      emit_dsi(as, (op&4) ? RISCVI_SLTIU : RISCVI_SLTI, tmp, left, k);
+      asm_guard(as, (op&1) ? RISCVI_BNE : RISCVI_BEQ, RID_TMP, RID_ZERO);
+      emit_dsi(as, (op&4) ? RISCVI_SLTIU : RISCVI_SLTI, RID_TMP, left, k);
       return;
     }
   }
-  right = ra_alloc1(as, ir->op2, allow);
-  asm_guard(as, ((op^(op>>1))&1) ? RISCVI_BNE : RISCVI_BEQ, tmp, RID_ZERO);
+  right = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, left));
+  asm_guard(as, ((op^(op>>1))&1) ? RISCVI_BNE : RISCVI_BEQ, RID_TMP, RID_ZERO);
   emit_ds1s2(as, (op&4) ? RISCVI_SLTU : RISCVI_SLT,
-             tmp, (op&2) ? right : left, (op&2) ? left : right);
+             RID_TMP, (op&2) ? right : left, (op&2) ? left : right);
 }
 
 static void asm_comp(ASMState *as, IRIns *ir)
 {
   if (irt_isnum(ir->t))
-    asm_fpcomp(as, ir, RSET_GPR);
+    asm_fpcomp(as, ir);
   else
     asm_intcomp(as, ir);
 }
@@ -1613,7 +1608,7 @@ static void asm_comp(ASMState *as, IRIns *ir)
 static void asm_equal(ASMState *as, IRIns *ir)
 {
   if (irt_isnum(ir->t)) {
-    asm_fpcomp(as, ir, RSET_GPR);
+    asm_fpcomp(as, ir);
   } else {
     Reg right, left = ra_alloc2(as, ir, RSET_GPR);
     right = (left >> 8); left &= 255;
