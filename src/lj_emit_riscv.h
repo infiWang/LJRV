@@ -211,7 +211,7 @@ static void emit_loadk32(ASMState *as, Reg rd, int32_t i)
   if (checki12(i)) {
     emit_loadk12(as, rd, i);
   } else {
-    if(LJ_UNLIKELY(RISCVF_HI(i) == 0x80000 && i > 0))
+    if(LJ_UNLIKELY(RISCVF_HI((uint32_t)i) == 0x80000u && i > 0))
       emit_dsi(as, RISCVI_XORI, rd, rd, RISCVF_LO(i));
     else
     emit_dsi(as, RISCVI_ADDI, rd, rd, RISCVF_LO(i));
