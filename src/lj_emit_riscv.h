@@ -200,12 +200,6 @@ static void emit_loadk12(ASMState *as, Reg rd, int32_t i)
   emit_di(as, RISCVI_ADDI, rd, i);
 }
 
-static void emit_loadk20(ASMState *as, Reg rd, int32_t i)
-{
-  emit_dsshamt(as, RISCVI_SRAIW, rd, rd, 12);
-  emit_du(as, RISCVI_LUI, rd, i);
-}
-
 static void emit_loadk32(ASMState *as, Reg rd, int32_t i)
 {
   if (checki12(i)) {
