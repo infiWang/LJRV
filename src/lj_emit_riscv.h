@@ -228,13 +228,21 @@ static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
   if (checki32((int64_t)u64)) {
     emit_loadk32(as, r, (int32_t)u64);
   } else {
-    emit_dsi(as, RISCVI_ADDI, r, r, u64 & 0x3ff);
-    emit_dsshamt(as, RISCVI_SLLI, r, r, 10);
-    emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 10) & 0x7ff);
-    emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
-    emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 21) & 0x7ff);
-    emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
-    emit_loadk32(as, r, (u64 >> 32) & 0xffffffff);
+    if (!(u64 & 0x00000fffffffffff)) {
+      emit_dsshamt(as, RISCVI_SLLI, r, r, 44);
+      emit_du(as, RISCVI_LUI, r, (u64 >> 44) & 0xfffff);
+    } else if (!(u64 & 0xffffffff)) {
+      emit_dsshamt(as, RISCVI_SLLI, r, r, 32);
+      emit_loadk32(as, r, (u64 >> 32) & 0xffffffff);
+    } else {
+      emit_dsi(as, RISCVI_ADDI, r, r, u64 & 0x3ff);
+      emit_dsshamt(as, RISCVI_SLLI, r, r, 10);
+      emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 10) & 0x7ff);
+      emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
+      emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 21) & 0x7ff);
+      emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
+      emit_loadk32(as, r, (u64 >> 32) & 0xffffffff);
+    }
   }
 }
 
