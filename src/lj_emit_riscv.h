@@ -238,9 +238,6 @@ static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
         uint64_t msk = ((1ul << (bit+1))-1)^((1ul << (((bit-inc) >= 0) ? (bit-inc) : 0))-1);
         uint32_t payload = (lo32 & msk) >> (((bit-inc) >= 0) ? (bit-inc) : 0);
         emit_dsi(as, RISCVI_ADDI, r, r, payload);
-      } else if (bit == 31) {
-        emit_dsshamt(as, RISCVI_SLLI, r, r, shamt+1);
-        shamt = 0;
       } else shamt++;
     }
     if (shamt) emit_dsshamt(as, RISCVI_SLLI, r, r, shamt);
