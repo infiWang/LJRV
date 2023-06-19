@@ -227,20 +227,27 @@ static void emit_loadu64(ASMState *as, Reg r, uint64_t u64)
 {
   if (checki32((int64_t)u64)) {
     emit_loadk32(as, r, (int32_t)u64);
-  } else if (!(u64&0xffffffffffful)) {
-    emit_dsshamt(as, RISCVI_SLLI, r, r, 32);
-    emit_du(as, RISCVI_LUI, r, u64 >> 44);
-  } else if (!(u64&0xfffffffful)) {
-    emit_dsshamt(as, RISCVI_SLLI, r, r, 32);
-    emit_loadk32(as, r, (int32_t)(u64 >> 32));
   } else {
-    emit_dsi(as, RISCVI_ADDI, r, r, u64 & 0x3ff);
-    emit_dsshamt(as, RISCVI_SLLI, r, r, 10);
-    emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 10) & 0x7ff);
-    emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
-    emit_dsi(as, RISCVI_ADDI, r, r, (u64 >> 21) & 0x7ff);
-    emit_dsshamt(as, RISCVI_SLLI, r, r, 11);
-    emit_loadk32(as, r, (int32_t)(u64 >> 32));
+    uint64_t lo32 = u64 & 0xfffffffful;
+    int8_t shamt = 0;
+    for(int8_t bit = 0; bit < 32; bit++) {
+      if (lo32 & (1 << bit)) {
+        if (shamt) emit_dsshamt(as, RISCVI_SLLI, r, r, shamt);
+        int8_t inc = bit+10 > 31 ? 31-bit : 10;
+        bit += inc, shamt = inc+1;
+        uint64_t msk = ((1ul << (bit+1))-1)^((1ul << (((bit-inc) >= 0) ? (bit-inc) : 0))-1);
+        uint32_t payload = (lo32 & msk) >> (((bit-inc) >= 0) ? (bit-inc) : 0);
+        emit_dsi(as, RISCVI_ADDI, r, r, payload);
+      } else if (bit == 31) {
+        emit_dsshamt(as, RISCVI_SLLI, r, r, shamt+1);
+        shamt = 0;
+      } else shamt++;
+    }
+    if (shamt) emit_dsshamt(as, RISCVI_SLLI, r, r, shamt);
+
+    uint32_t hi32 = u64 >> 32;
+    if (hi32 & 0xfff) emit_loadk32(as, r, hi32);
+    else emit_du(as, RISCVI_LUI, r, hi32 >> 12);
   }
 }
 
