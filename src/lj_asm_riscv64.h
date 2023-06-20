@@ -1735,7 +1735,7 @@ static void asm_gc_check(ASMState *as)
   const CCallInfo *ci = &lj_ir_callinfo[IRCALL_lj_gc_step_jit];
   IRRef args[2];
   MCLabel l_end;
-  Reg tmp2;
+  Reg tmp;
   ra_evictset(as, RSET_SCRATCH);
   l_end = emit_label(as);
   /* Exit trace if in GCSatomic or GCSfinalize. Avoids syncing GC objects. */
@@ -1745,11 +1745,11 @@ static void asm_gc_check(ASMState *as)
   args[1] = ASMREF_TMP2;  /* MSize steps     */
   asm_gencall(as, ci, args);
   emit_ds(as, RISCVI_MV, ra_releasetmp(as, ASMREF_TMP1), RID_GL);
-  tmp2 = ra_releasetmp(as, ASMREF_TMP2);
-  emit_loadi(as, tmp2, as->gcsteps);
+  tmp = ra_releasetmp(as, ASMREF_TMP2);
+  emit_loadi(as, tmp, as->gcsteps);
   /* Jump around GC step if GC total < GC threshold. */
-  emit_branch(as, RISCVI_BLTU, RID_TMP, tmp2, l_end);
-  emit_getgl(as, tmp2, gc.threshold);
+  emit_branch(as, RISCVI_BLTU, RID_TMP, tmp, l_end);
+  emit_getgl(as, tmp, gc.threshold);
   emit_getgl(as, RID_TMP, gc.total);
   as->gcsteps = 0;
   checkmclim(as);
