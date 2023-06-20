@@ -1900,23 +1900,26 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
 
   for (; p < pe; p++) {
     /* Look for exitstub branch, replace with branch to target. */
-    ptrdiff_t delta = (char *)target - (char *)(p+1);
-    if (((p[0] ^ RISCVF_IMMB(8)) & 0xfe000f80u) == 0 &&
-        ((p[0] & 0x0000007fu) == 0x63u) &&
-        ((p[1] ^ RISCVF_IMMJ((char *)px-(char *)(p+1))) & 0xfffff000u) == 0 &&
-        ((p[1] & 0x0000007fu) == 0x6fu) && p[-1] != RISCV_NOPATCH_GC_CHECK) {
-      lj_assertJ(checki32(delta), "branch target out of range");
-      /* Patch branch, if within range. */
+    ptrdiff_t odelta = (char *)px - (char *)(p+1),
+              ndelta = (char *)target - (char *)(p+1);
+    if ((((p[0] ^ RISCVF_IMMB(8)) & 0xfe000f80u) == 0 &&
+         ((p[0] & 0x0000007fu) == 0x63u) &&
+         ((p[1] ^ RISCVF_IMMJ(odelta)) & 0xfffff000u) == 0 &&
+         ((p[1] & 0x0000007fu) == 0x6fu) && p[-1] != RISCV_NOPATCH_GC_CHECK) ||
+        (((p[1] ^ RISCVF_IMMJ(odelta)) & 0xfffff000u) == 0 &&
+         ((p[1] & 0x0000007fu) == 0x6fu) && p[0] != RISCV_NOPATCH_GC_CHECK)) {
+      lj_assertJ(checki32(ndelta), "branch target out of range");
+      /* Patch jump, if within range. */
 	    patchbranch:
-      if (checki21(delta)) { /* Patch jump */
-  p[1] = RISCVI_JAL | RISCVF_IMMJ(delta);
+      if (checki21(ndelta)) { /* Patch jump */
+  p[1] = RISCVI_JAL | RISCVF_IMMJ(ndelta);
   if (!cstart) cstart = p + 1;
       } else {  /* Branch out of range. Use spare jump slot in mcarea. */
   MCode *mcjump = asm_sparejump_use(mcarea, target);
   if (mcjump) {
 	  lj_mcode_sync(mcjump, mcjump+2);
-    delta = (char *)mcjump - (char *)(p+1);
-    if (checki21(delta)) {
+    ndelta = (char *)mcjump - (char *)(p+1);
+    if (checki21(ndelta)) {
       goto patchbranch;
     } else {
       lj_assertJ(0, "spare jump out of range: -Osizemcode too big");
