@@ -432,7 +432,7 @@ static void asm_bufhdr_write(ASMState *as, Reg sb)
 static void asm_tointg(ASMState *as, IRIns *ir, Reg left)
 {
   Reg tmp = ra_scratch(as, rset_exclude(RSET_FPR, left));
-  Reg dest = ra_dest(as, ir, RSET_GPR), cmp = ra_scratch(as, RSET_GPR);
+  Reg dest = ra_dest(as, ir, RSET_GPR), cmp = ra_scratch(as, rset_exclude(RSET_GPR, dest));
   asm_guard(as, RISCVI_BEQ, cmp, RID_ZERO);
   emit_ds1s2(as, RISCVI_FEQ_D, cmp, tmp, left);
   emit_ds(as, RISCVI_FCVT_D_W, tmp, dest);
