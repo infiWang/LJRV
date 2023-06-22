@@ -438,8 +438,8 @@
 |.macro load_got, func
 |  ld CFUNCADDR, GL_GOT(func)(GL)
 |.endmacro
-|// JAL should be enough for internal jumps.
-|// .macro call_intern, func; jalr CFUNCADDR; .endmacro
+|// JAL should be enough for *most* internal jumps.
+|.macro call_intern, func; jalr CFUNCADDR; .endmacro
 |.macro call_extern; jalr CFUNCADDR; .endmacro
 |.macro jmp_extern; jr CFUNCADDR; .endmacro
 |
@@ -2581,15 +2581,16 @@ static void build_subroutines(BuildCtx *ctx)
   |//-- FFI helper functions -----------------------------------------------
   |//-----------------------------------------------------------------------
   |
-  |// FIXME: BROKEN! What's the call convention here exactly?
-  |// Handler for callback functions. Callback slot number in r19, g in r17.
+  |// Handler for callback functions. Callback slot number in x5, g in x7.
   |->vm_ffi_callback:
   |.if FFI
   |.type CTSTATE, CTState, PC
   |  saveregs
-  |  ld CTSTATE, GL:x31->ctype_state
-  |  addxi DISPATCH, x31, GG_G2DISP
-  |  sw CFUNCADDR, CTSTATE->cb.slot
+  |  ld CTSTATE, GL:x7->ctype_state
+  |  addxi DISPATCH, x7, GG_G2DISP
+  |  load_got lj_ccallback_leave
+  |  srli x5, x5, 12
+  |  sw x5, CTSTATE->cb.slot
   |  sd CARG1, CTSTATE->cb.gpr[0]
   |  fsd FARG1, CTSTATE->cb.fpr[0]
   |  sd CARG2, CTSTATE->cb.gpr[1]
@@ -2611,7 +2612,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd x0, SAVE_PC(sp)			// Any value outside of bytecode is ok.
   |  mv CARG1, CTSTATE
   |  mv CARG2, sp
-  |  jal extern lj_ccallback_enter		// (CTState *cts, void *cf)
+  |  call_intern lj_ccallback_leave	// (CTState *cts, void *cf)
   |  // Returns lua_State *.
   |  ld BASE, L:CRET1->base
   |  ld RC, L:CRET1->top
@@ -2620,23 +2621,25 @@ static void build_subroutines(BuildCtx *ctx)
   |  ld LFUNC:RB, FRAME_FUNC(BASE)
   |  li TISNIL, LJ_TNIL
   |  li TISNUM, LJ_TISNUM
+  |  fmv.w.x TOBIT, TMP3
   |  li_vmstate INTERP
   |  subw RC, RC, BASE
   |  cleartp LFUNC:RB
   |  st_vmstate
-  |  fcvt.d.w TOBIT, TMP3
+  |  fcvt.d.s TOBIT, TOBIT
   |  ins_callt
   |.endif
   |
   |->cont_ffi_callback:				// Return from FFI callback.
   |.if FFI
+  |  load_got lj_ccallback_leave
   |  ld CTSTATE, GL->ctype_state
   |  sd BASE, L->base
   |  sd RB, L->top
   |  sd L, CTSTATE->L
   |  mv CARG1, CTSTATE
   |  mv CARG2, RA
-  |  jal extern lj_ccallback_leave		// (CTState *cts, TValue *o)
+  |  call_intern lj_ccallback_leave	// (CTState *cts, TValue *o)
   |  fld FRET1, CTSTATE->cb.fpr[0]
   |  ld CRET1, CTSTATE->cb.gpr[0]
   |  fld FRET2, CTSTATE->cb.fpr[1]

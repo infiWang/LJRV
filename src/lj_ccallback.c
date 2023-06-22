@@ -71,6 +71,10 @@ static MSize CALLBACK_OFS2SLOT(MSize ofs)
 
 #define CALLBACK_MCODE_HEAD		52
 
+#elif LJ_TARGET_RISCV64
+
+#define CALLBACK_MCODE_HEAD		68
+
 #else
 
 /* Missing support for this architecture. */
@@ -241,28 +245,31 @@ static void *callback_mcode_init(global_State *g, uint32_t *page)
 #elif LJ_TARGET_RISCV64
 static void *callback_mcode_init(global_State *g, uint32_t *page)
 {
-  // FIXME: BROKEN! Though JIT is not ready anyway.
   uint32_t *p = page;
   uintptr_t target = (uintptr_t)(void *)lj_vm_ffi_callback;
   uintptr_t ug = (uintptr_t)(void *)g;
   uintptr_t target_hi = (target >> 32), target_lo = target & 0xffffffffULL;
   uintptr_t ug_hi = (ug >> 32), ug_lo = ug & 0xffffffffULL;
   MSize slot;
-  *p++ = RISCVI_LUI  | RISCVF_D(RID_X6)  | RISCVF_IMMU(RISCVF_HI(target >> 32));
-  *p++ = RISCVI_LUI  | RISCVF_D(RID_X7)  | RISCVF_IMMU(RISCVF_HI(target & 0xffffffff));
-  *p++ = RISCVI_LUI  | RISCVF_D(RID_X30) | RISCVF_IMMU(RISCVF_HI(ug >> 32));
-  *p++ = RISCVI_LUI  | RISCVF_D(RID_X31) | RISCVF_IMMU(RISCVF_HI(ug & 0xffffffff));
-  *p++ = RISCVI_ADDI | RISCVF_D(RID_X6)  | RISCVF_S1(RID_X6)  | RISCVF_IMMI(RISCVF_LO(target_hi));
-  *p++ = RISCVI_ADDI | RISCVF_D(RID_X7)  | RISCVF_S1(RID_X7)  | RISCVF_IMMI(RISCVF_LO(target_lo));
-  *p++ = RISCVI_ADDI | RISCVF_D(RID_X30) | RISCVF_S1(RID_X30) | RISCVF_IMMI(RISCVF_LO(ug_hi));
-  *p++ = RISCVI_ADDI | RISCVF_D(RID_X31) | RISCVF_S1(RID_X31) | RISCVF_IMMI(RISCVF_LO(ug_lo));
-  *p++ = RISCVI_SLLI | RISCVF_D(RID_X6)  | RISCVF_S1(RID_X6)  | RISCVF_SHAMT(32);
-  *p++ = RISCVI_SLLI | RISCVF_D(RID_X30) | RISCVF_S1(RID_X30) | RISCVF_SHAMT(32);
-  *p++ = RISCVI_OR   | RISCVF_D(RID_X5)  | RISCVF_S1(RID_X6)  | RISCVF_S2(RID_X7);
-  *p++ = RISCVI_OR   | RISCVF_D(RID_X17) | RISCVF_S1(RID_X30) | RISCVF_S2(RID_X31);
-  *p++ = RISCVI_JALR | RISCVF_D(RID_X0)  | RISCVF_S1(RID_X5)  | RISCVF_IMMJ(0);
+  *p++ = RISCVI_LUI  | RISCVF_D(RID_X6) | RISCVF_IMMU(RISCVF_HI(target_hi));
+  *p++ = RISCVI_LUI  | RISCVF_D(RID_X7) | RISCVF_IMMU(RISCVF_HI(ug_hi));
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X6) | RISCVF_S1(RID_X6) | RISCVF_IMMI(RISCVF_LO(target_hi));
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X7) | RISCVF_S1(RID_X7) | RISCVF_IMMI(RISCVF_LO(ug_hi));
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X6) | RISCVF_S1(RID_X6) | RISCVF_SHAMT(11);
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X7) | RISCVF_S1(RID_X7) | RISCVF_SHAMT(11);
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X6) | RISCVF_S1(RID_X6) | RISCVF_IMMI(target_lo >> 21);
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X7) | RISCVF_S1(RID_X7) | RISCVF_IMMI(ug_lo >> 21);
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X6) | RISCVF_S1(RID_X6) | RISCVF_SHAMT(11);
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X7) | RISCVF_S1(RID_X7) | RISCVF_SHAMT(11);
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X6) | RISCVF_S1(RID_X6) | RISCVF_IMMI((target_lo >> 10) & 0x7ff);
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X7) | RISCVF_S1(RID_X7) | RISCVF_IMMI((ug_lo >> 10) & 0x7ff);
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X6) | RISCVF_S1(RID_X6) | RISCVF_SHAMT(10);
+  *p++ = RISCVI_SLLI | RISCVF_D(RID_X7) | RISCVF_S1(RID_X7) | RISCVF_SHAMT(10);
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X6) | RISCVF_S1(RID_X6) | RISCVF_IMMI(target_lo & 0x3ff);
+  *p++ = RISCVI_ADDI | RISCVF_D(RID_X7) | RISCVF_S1(RID_X7) | RISCVF_IMMI(ug_lo & 0x3ff);
+  *p++ = RISCVI_JALR | RISCVF_D(RID_X0) | RISCVF_S1(RID_X6) | RISCVF_IMMJ(0);
   for (slot = 0; slot < CALLBACK_MAX_SLOT; slot++) {
-    *p++ = RISCVI_ORI | RISCVF_D(RID_X5) | RISCVF_IMMI(slot);
+    *p++ = RISCVI_LUI | RISCVF_D(RID_X5) | RISCVF_IMMU(slot);
     *p = RISCVI_JAL | RISCVF_IMMJ(((char *)page-(char *)p));
     p++;
   }

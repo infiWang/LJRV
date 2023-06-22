@@ -67,12 +67,24 @@ GOTDEF(GOTENUM)
 #endif
 
 #if LJ_TARGET_RISCV64
-/* Need our own global offset table to wrap RISC-V PIC extern calls */
+/* Need our own global offset table to wrap RISC-V PIC intern / extern calls */
+
+#if LJ_HASJIT
+#define JITGOTDEF(_)	_(lj_err_trace) _(lj_trace_exit) _(lj_trace_hot)
+#else
+#define JITGOTDEF(_)
+#endif
+#define FFIGOTDEF(_) \
+  _(lj_meta_equal_cd) _(lj_ccallback_enter) _(lj_ccallback_leave)
+#else
+#define FFIGOTDEF(_)
+#endif
 
 #define GOTDEF(_) \
   _(floor) _(ceil) _(trunc) _(log) _(log10) _(exp) _(sin) _(cos) _(tan) \
   _(asin) _(acos) _(atan) _(sinh) _(cosh) _(tanh) _(frexp) _(modf) _(atan2) \
-  _(pow) _(fmod) _(ldexp)
+  _(pow) _(fmod) _(ldexp) \
+  JITGOTDEF(_) FFIGOTDEF(_)
 
 enum {
 #define GOTENUM(name) LJ_GOT_##name,
