@@ -2588,9 +2588,9 @@ static void build_subroutines(BuildCtx *ctx)
   |  saveregs
   |  ld CTSTATE, GL:x7->ctype_state
   |  addxi DISPATCH, x7, GG_G2DISP
-  |  load_got lj_ccallback_leave
   |  srli x5, x5, 12
   |  sw x5, CTSTATE->cb.slot
+  |  load_got lj_ccallback_leave
   |  sd CARG1, CTSTATE->cb.gpr[0]
   |  fsd FARG1, CTSTATE->cb.fpr[0]
   |  sd CARG2, CTSTATE->cb.gpr[1]
