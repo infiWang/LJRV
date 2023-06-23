@@ -381,11 +381,11 @@ static void emit_movrr(ASMState *as, IRIns *ir, Reg dst, Reg src)
 static void emit_opk(ASMState *as, RISCVIns riscvi, Reg dest, Reg src,
          intptr_t i, RegSet allow)
 {
-  if (((riscvi == RISCVI_ADDI) && checki12(i)) ||
+  if (((riscvi == RISCVI_ADDI) && checki12((uintptr_t)i)) ||
       (((riscvi == RISCVI_XORI) || (riscvi == RISCVI_ORI)) &&
-       (i >= 0 ? checki12(i << 1) : checki12(i))) ||
+       (i >= 0 ? checki12((uintptr_t)i << 1) : checki12((uintptr_t)i))) ||
       ((riscvi == RISCVI_ANDI) &&
-       (i >= 0 ? checki12(i) : checki12(i << 1)))) {
+       (i >= 0 ? checki12((uintptr_t)i) : checki12((uintptr_t)i << 1)))) {
     emit_dsi(as, riscvi, dest, src, i);
   } else {
     switch (riscvi) {
