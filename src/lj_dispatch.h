@@ -74,6 +74,7 @@ GOTDEF(GOTENUM)
 #else
 #define JITGOTDEF(_)
 #endif
+#if LJ_HASFFI
 #define FFIGOTDEF(_) \
   _(lj_meta_equal_cd) _(lj_ccallback_enter) _(lj_ccallback_leave)
 #else
