@@ -52,7 +52,7 @@ CCOPT_arm=
 CCOPT_arm64=
 CCOPT_ppc=
 CCOPT_mips=
-CCOPT_riscv64=
+CCOPT_riscv64= -fwrapv # Workaround for now. Possibly UB?
 #
 CCDEBUG=
 # Uncomment the next line to generate debug information:
