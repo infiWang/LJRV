@@ -43,7 +43,7 @@ static void emit_r4(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2, Reg
 
 static void emit_i(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_S1(rs1) | RISCVF_IMMI(i & 0xfff);
+  *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_S1(rs1) | RISCVF_IMMI((uint32_t)i & 0xfff);
 }
 
 #define emit_di(as, riscvi, rd, i)         emit_i(as, riscvi, rd, 0, i)
@@ -52,27 +52,31 @@ static void emit_i(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t i)
 
 static void emit_s(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMS(i & 0xfff);
+  *--as->mcp = riscvi | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMS((uint32_t)i & 0xfff);
 }
 
 #define emit_s1s2i(as, riscvi, rs1, rs2, i)  emit_s(as, riscvi, rs1, rs2, i)
 
+/*
 static void emit_b(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMB(i & 0x1ffe);
+  *--as->mcp = riscvi | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMB((uint32_t)i & 0x1ffe);
 }
+*/
 
-static void emit_u(ASMState *as, RISCVIns riscvi, Reg rd, int32_t i)
+static void emit_u(ASMState *as, RISCVIns riscvi, Reg rd, uint32_t i)
 {
   *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_IMMU(i & 0xfffff);
 }
 
 #define emit_du(as, riscvi, rd, i)           emit_u(as, riscvi, rd, i)
 
+/*
 static void emit_j(ASMState *as, RISCVIns riscvi, Reg rd, int32_t i)
 {
-  *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_IMMJ(i & 0x1fffffe);
+  *--as->mcp = riscvi | RISCVF_D(rd) | RISCVF_IMMJ((uint32_t)i & 0x1fffffe);
 }
+*/
 
 static Reg ra_allock(ASMState *as, intptr_t k, RegSet allow);
 static void ra_allockreg(ASMState *as, intptr_t k, Reg r);
@@ -202,14 +206,14 @@ static void emit_loadk12(ASMState *as, Reg rd, int32_t i)
 
 static void emit_loadk32(ASMState *as, Reg rd, int32_t i)
 {
-  if (checki12(i)) {
+  if (checki12((int64_t)i)) {
     emit_loadk12(as, rd, i);
   } else {
     if(LJ_UNLIKELY(RISCVF_HI((uint32_t)i) == 0x80000u && i > 0))
       emit_dsi(as, RISCVI_XORI, rd, rd, RISCVF_LO(i));
     else
     emit_dsi(as, RISCVI_ADDI, rd, rd, RISCVF_LO(i));
-    emit_du(as, RISCVI_LUI, rd, RISCVF_HI(i));
+    emit_du(as, RISCVI_LUI, rd, RISCVF_HI((uint32_t)i));
   }
 }
 
