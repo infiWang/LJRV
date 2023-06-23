@@ -2587,10 +2587,11 @@ static void build_subroutines(BuildCtx *ctx)
   |.type CTSTATE, CTState, PC
   |  saveregs
   |  ld CTSTATE, GL:x7->ctype_state
+  |  mv GL, x7
   |  addxi DISPATCH, x7, GG_G2DISP
   |  srli x5, x5, 12
   |  sw x5, CTSTATE->cb.slot
-  |  load_got lj_ccallback_leave
+  |  load_got lj_ccallback_enter
   |  sd CARG1, CTSTATE->cb.gpr[0]
   |  fsd FARG1, CTSTATE->cb.fpr[0]
   |  sd CARG2, CTSTATE->cb.gpr[1]
@@ -2612,7 +2613,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd x0, SAVE_PC(sp)			// Any value outside of bytecode is ok.
   |  mv CARG1, CTSTATE
   |  mv CARG2, sp
-  |  call_intern lj_ccallback_leave	// (CTState *cts, void *cf)
+  |  call_intern lj_ccallback_enter	// (CTState *cts, void *cf)
   |  // Returns lua_State *.
   |  ld BASE, L:CRET1->base
   |  ld RC, L:CRET1->top
