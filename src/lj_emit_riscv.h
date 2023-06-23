@@ -375,7 +375,7 @@ static void emit_movrr(ASMState *as, IRIns *ir, Reg dst, Reg src)
 
 /* Emit an arithmetic operation with a constant operand. */
 static void emit_opk(ASMState *as, RISCVIns riscvi, Reg dest, Reg src,
-         int32_t i, RegSet allow)
+         intptr_t i, RegSet allow)
 {
   if (((riscvi == RISCVI_ADDI) && checki12(i)) ||
       (((riscvi == RISCVI_XORI) || (riscvi == RISCVI_ORI)) &&
