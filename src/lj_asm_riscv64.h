@@ -509,7 +509,7 @@ static void asm_conv(ASMState *as, IRIns *ir)
   (st == IRT_NUM ?
    (irt_isint(ir->t) ? RISCVI_FCVT_W_D : RISCVI_FCVT_WU_D) :
    (irt_isint(ir->t) ? RISCVI_FCVT_W_S : RISCVI_FCVT_WU_S));
-    	emit_ds(as, riscvi, dest, left);
+      emit_ds(as, riscvi|RISCVF_RM(RISCVRM_RTZ), dest, left);
     }
   } else if (st >= IRT_I8 && st <= IRT_U16) { /* Extend to 32 bit integer. */
     Reg dest = ra_dest(as, ir, RSET_GPR);
@@ -1039,7 +1039,7 @@ static void asm_sload(ASMState *as, IRIns *ir)
       emit_dsshamt(as, RISCVI_SLLI, dest, dest, 17);
     } else if (ir->op2 & IRSLOAD_CONVERT) {
       if (irt_isint(t)) {
-	emit_ds(as, RISCVI_FCVT_W_D, dest, tmp);
+	emit_ds(as, RISCVI_FCVT_W_D|RISCVF_RM(RISCVRM_RTZ), dest, tmp);
   /* If value is already loaded for type check, move it to FPR. */
 	if ((ir->op2 & IRSLOAD_TYPECHECK))
 	  emit_ds(as, RISCVI_FMV_D_X, tmp, dest);

@@ -464,4 +464,13 @@ typedef enum RISCVIns {
   /* TBD: RVV?, RVP?, RVJ? */
 } RISCVIns;
 
+typedef enum RISCVRM {
+  RISCVRM_RNE = 0,
+  RISCVRM_RTZ = 1,
+  RISCVRM_RDN = 2,
+  RISCVRM_RUP = 3,
+  RISCVRM_RMM = 4,
+  RISCVRM_DYN = 7,
+} RISCVRM;
+
 #endif
