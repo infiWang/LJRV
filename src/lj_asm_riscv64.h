@@ -1862,19 +1862,12 @@ static Reg asm_setup_call_slots(ASMState *as, IRIns *ir, const CCallInfo *ci)
   int nslots = 0, ngpr = REGARG_NUMGPR, nfpr = REGARG_NUMFPR;
   asm_collectargs(as, ir, ci, args);
   for (i = 0; i < nargs; i++) {
-    if (args[i] && irt_isfp(IR(args[i])->t)) {
-      if (nfpr > 0)
-  nfpr--;
-      else if (ngpr > 0)
-	ngpr--;
-      else
-	nslots += 2;
-    } else {
-      if (ngpr > 0)
-	ngpr--;
-      else
-	nslots += 2;
-    }
+  //   if (args[i] && irt_isfp(IR(args[i])->t)) {
+  //     if (nfpr > 0) nfpr--; else if (ngpr > 0) ngpr--;
+  //     else nslots += 2;
+  //   } else {
+      if (ngpr > 0) ngpr--; else nslots += 2;
+    // }
   }
   if (nslots > as->evenspill)  /* Leave room for args in stack slots. */
     as->evenspill = nslots;
