@@ -3236,12 +3236,10 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  add RA, BASE, RA
     |  bxltz TMP1, ->vmeta_arith
     |.elif "intins" == "mulw"
-    |  mulw CRET1, CARG3, CARG4
     |  mul TMP2, CARG3, CARG4
-    |  sraiw TMP1, CRET1, 31
-    |  srai TMP2, TMP2, 32
+    |  sext.w CRET1, TMP2
     |  add RA, BASE, RA
-    |  bxne TMP1, TMP2, ->vmeta_arith		// 63-32bit not all 0 or 1: overflow.
+    |  bxne CRET1, TMP2, ->vmeta_arith		// 63-32bit not all 0 or 1: overflow.
     |.endif
     |  zext.w CRET1, CRET1
     |  settp CRET1, TISNUM
