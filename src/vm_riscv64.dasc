@@ -647,16 +647,16 @@ static void build_subroutines(BuildCtx *ctx)
   |  andi sp, CARG1, CFRAME_RAWMASK
   |->vm_unwind_ff_eh:			// Landing pad for external unwinder.
   |  ld L, SAVE_L(sp)
-  |  lui TMP3, 0x59c00		// TOBIT = 2^52 + 2^51 (float).
+  |  lui TMP3, 0x43380		// TOBIT = Hiword of 2^52 + 2^51 (double).
   |  li TISNIL, LJ_TNIL
   |  li TISNUM, LJ_TISNUM
   |  ld BASE, L->base
   |  ld GL, L->glref			// Setup pointer to global state.
-  |  fmv.w.x TOBIT, TMP3
+  |  slli TMP3, TMP3, 32
   |  mov_false TMP1
   |    li_vmstate INTERP
   |  ld PC, FRAME_PC(BASE)		// Fetch PC of previous frame.
-  |    fcvt.d.s TOBIT, TOBIT
+  |    fmv.d.x TOBIT, TMP3
   |  addi RA, BASE, -8		// Results start at BASE-8.
   |  addxi DISPATCH, GL, GG_G2DISP
   |  sd TMP1, 0(RA)			// Prepend false to error message.
@@ -722,11 +722,11 @@ static void build_subroutines(BuildCtx *ctx)
   |   ld BASE, L->base
   |   ld TMP1, L->top
   |  ld PC, FRAME_PC(BASE)
-  |     lui TMP3, 0x59c00		// TOBIT = 2^52 + 2^51 (float).
+  |     lui TMP3, 0x43380		// TOBIT = Hiword of 2^52 + 2^51 (double).
   |   sub RD, TMP1, BASE
-  |     fmv.w.x TOBIT, TMP3
+  |     slli TMP3, TMP3, 32
   |    sb x0, L->status
-  |     fcvt.d.s TOBIT, TOBIT
+  |     fmv.d.x TOBIT, TMP3
   |    li_vmstate INTERP
   |   addi RD, RD, 8
   |    st_vmstate
@@ -764,14 +764,14 @@ static void build_subroutines(BuildCtx *ctx)
   |3:  // Entry point for vm_cpcall/vm_resume (BASE = base, PC = ftype).
   |  sd L, GL->cur_L
   |  ld TMP2, L->base			// TMP2 = old base (used in vmeta_call).
-  |     lui TMP3, 0x59c00		// TOBIT = 2^52 + 2^51 (float).
+  |     lui TMP3, 0x43380		// TOBIT = Hiword of 2^52 + 2^51 (double).
   |   ld TMP1, L->top
-  |     fmv.w.x TOBIT, TMP3
+  |     slli TMP3, TMP3, 32
   |  add PC, PC, BASE
   |   sub NARGS8:RC, TMP1, BASE
   |     li TISNUM, LJ_TISNUM
   |  sub PC, PC, TMP2			// PC = frame delta + frame type
-  |     fcvt.d.s TOBIT, TOBIT
+  |     fmv.d.x TOBIT, TMP3
   |    li_vmstate INTERP
   |     li TISNIL, LJ_TNIL
   |    st_vmstate
@@ -2380,17 +2380,17 @@ static void build_subroutines(BuildCtx *ctx)
   |1:
   |  ld LFUNC:RB, FRAME_FUNC(BASE)
   |  bltz CRET1, >9			// Check for error from exit.
-  |  lui TMP3, 0x59c00		// TOBIT = 2^52 + 2^51 (float).
+  |  lui TMP3, 0x43380		// TOBIT = Hiword of 2^52 + 2^51 (double).
   |  slli MULTRES, CRET1, 3
   |  cleartp LFUNC:RB
   |  sw MULTRES, TMPD(sp)
   |  li TISNIL, LJ_TNIL
   |  li TISNUM, LJ_TISNUM		// Setup type comparison constants.
-  |  fmv.w.x TOBIT, TMP3
+  |  slli TMP3, TMP3, 32
   |  ld TMP1, LFUNC:RB->pc
   |  sd x0, GL->jit_base
   |  ld KBASE, PC2PROTO(k)(TMP1)
-  |  fcvt.d.s TOBIT, TOBIT
+  |  fmv.d.x TOBIT, TMP3
   |  // Modified copy of ins_next which handles function header dispatch, too.
   |  lw INS, 0(PC)
   |  addi PC, PC, 4
@@ -2449,7 +2449,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  beqz TMP0, >5			// Truncate only if |x| < 2^52.
   |  sltz TMP1, TMP1
   |.if "func" == "ceil"
-  |  lui TMP0, 0xbff00
+  |  lui TMP0, 0xbff00	// Hiword of -1 (double).
   |.else
   |  lui TMP0, 0x3ff00	// Hiword of +1 (double).
   |.endif
@@ -2618,16 +2618,16 @@ static void build_subroutines(BuildCtx *ctx)
   |  ld BASE, L:CRET1->base
   |  ld RC, L:CRET1->top
   |  mv L, CRET1
-  |  lui TMP3, 0x59c00			// TOBIT = 2^52 + 2^51 (float).
+  |  lui TMP3, 0x43380			// TOBIT = Hiword of 2^52 + 2^51 (double).
   |  ld LFUNC:RB, FRAME_FUNC(BASE)
   |  li TISNIL, LJ_TNIL
   |  li TISNUM, LJ_TISNUM
-  |  fmv.w.x TOBIT, TMP3
+  |  slli TMP3, TMP3, 32
   |  li_vmstate INTERP
   |  subw RC, RC, BASE
   |  cleartp LFUNC:RB
   |  st_vmstate
-  |  fcvt.d.s TOBIT, TOBIT
+  |  fmv.d.x TOBIT, TMP3
   |  ins_callt
   |.endif
   |
