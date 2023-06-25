@@ -3237,8 +3237,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  bxltz TMP1, ->vmeta_arith
     |.elif "intins" == "mulw"
     |  mul TMP2, CARG3, CARG4
-    |  sext.w CRET1, TMP2
     |  add RA, BASE, RA
+    |  sext.w CRET1, TMP2
     |  bxne CRET1, TMP2, ->vmeta_arith		// 63-32bit not all 0 or 1: overflow.
     |.endif
     |  zext.w CRET1, CRET1
