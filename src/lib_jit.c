@@ -648,6 +648,43 @@ JIT_PARAMDEF(JIT_PARAMINIT)
 #include <sys/utsname.h>
 #endif
 
+#if LJ_TARGET_RISCV64
+#include <setjmp.h>
+#include <signal.h>
+static sigjmp_buf sigbuf = {0};
+static void detect_sigill(int sig) {
+  siglongjmp(sigbuf, 1);
+}
+
+static int rvzba() {
+#if defined(__GNUC__)
+  // Don't bother verifying the result, just check if the instruction exists.
+  // add.uw zero, zero, zero
+  __asm__(".4byte 0x0800003b");
+  return 1;
+#else
+  return 0;
+#endif
+}
+
+static int rvzbb() {
+#if defined(__GNUC__)
+  register int t asm ("a0");
+  // addi a0, zero, 255; sext.b a0, a0;
+  __asm__("addi a0, zero, 255\n\t.4byte 0x60451513");
+  return t < 0;
+#else
+  return 0;
+#endif
+}
+
+static uint32_t riscv_probe(int (*func)(void), uint32_t flag) {
+    if (sigsetjmp(sigbuf, 1) == 0) {
+        return func() ? flag : 0;
+    } else return 0;
+}
+#endif
+
 /* Arch-dependent CPU feature detection. */
 static uint32_t jit_cpudetect(void)
 {
@@ -721,9 +758,18 @@ static uint32_t jit_cpudetect(void)
 
 #elif LJ_TARGET_RISCV64
 #if LJ_HASJIT
+  // SIGILL-based detection of Zba and Zbb. Welcome to the future.
 
-// Detect C/B/V/P?
+  struct sigaction old = {0}, act = {0};
+  act.sa_handler = detect_sigill;
+  sigaction(SIGILL, &act, &old);
+  flags |= riscv_probe(rvzba, JIT_F_RVZba);
+  flags |= riscv_probe(rvzbb, JIT_F_RVZbb);
+  sigaction(SIGILL, &old, NULL);
 
+  // Detect C/V/P?
+  // C would need a chunk of mmap memory, and we don't really care about C currently.
+  // V have no hardware available, P not ratified yet.
 #endif
 
 #else
