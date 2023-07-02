@@ -308,13 +308,13 @@ typedef MCode *MCLabel;
 /* Return label pointing to current PC. */
 #define emit_label(as)		((as)->mcp)
 
-static void emit_branch(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, MCode *target)
+static void emit_branch(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2, MCode *target, int jump)
 {
   MCode *p = as->mcp;
   ptrdiff_t delta = (char *)target - (char *)(p - 1);
   // lj_assertA(((delta + 0x10000) >> 13) == 0, "branch target out of range"); /* B */
   lj_assertA(((delta + 0x100000) >> 21) == 0, "branch target out of range"); /* ^B+J */
-  if (checki13(delta)) {
+  if (checki13(delta) && !jump) {
     *--p = riscvi | RISCVF_S1(rs1) | RISCVF_S2(rs2) | RISCVF_IMMB(delta);
     *--p = RISCVI_NOP;
   } else {
