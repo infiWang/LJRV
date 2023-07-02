@@ -101,7 +101,7 @@ static void emit_lso(ASMState *as, RISCVIns riscvi, Reg data, Reg base, int32_t 
 
 static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t shamt)
 {
-  if (as->flags & JIT_F_RVB) {
+  if (as->flags & JIT_F_RVZbb) {
     emit_dsshamt(as, riscvi, rd, rs1, shamt);
   } else {
     RISCVIns ai, bi;
@@ -127,7 +127,7 @@ static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t sh
 
 static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2)
 {
-  if (as->flags & JIT_F_RVB) {
+  if (as->flags & JIT_F_RVZbb) {
     emit_ds1s2(as, riscvi, rd, rs1, rs2);
   } else {
     RISCVIns sai, sbi;
@@ -164,7 +164,8 @@ static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2)
 
 static void emit_ext(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1)
 {
-  if (as->flags & JIT_F_RVB) {
+  if ((riscvi != RISCVI_ZEXT_W && as->flags & JIT_F_RVZbb) ||
+      (riscvi == RISCVI_ZEXT_W && as->flags & JIT_F_RVZba)) {
     emit_ds(as, riscvi, rd, rs1);
   } else {
     RISCVIns sli, sri;

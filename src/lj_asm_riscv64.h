@@ -1376,7 +1376,7 @@ static void asm_bswap(ASMState *as, IRIns *ir)
   Reg dest = ra_dest(as, ir, RSET_GPR);
   Reg left = ra_alloc1(as, ir->op1, RSET_GPR);
   RegSet allow = rset_exclude(RSET_GPR, dest);
-  if (as->flags & JIT_F_RVB) {
+  if (as->flags & JIT_F_RVZbb) {
     if (!irt_is64(ir->t))
       emit_dsshamt(as, RISCVI_SRAI, dest, dest, 32);
     emit_ds(as, RISCVI_REV8, dest, left);
@@ -1510,7 +1510,7 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
     Reg dest = ra_dest(as, ir, RSET_GPR);
     Reg left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
     Reg right = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, left));
-    if (as->flags & JIT_F_RVB) {
+    if (as->flags & JIT_F_RVZbb) {
       emit_ds1s2(as, ismax ? RISCVI_MAX : RISCVI_MIN, dest, left, right);
     } else {
       emit_ds1s2(as, RISCVI_OR, dest, dest, RID_TMP); 
