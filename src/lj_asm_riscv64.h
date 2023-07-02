@@ -704,16 +704,14 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     l_end = asm_exitstub_addr(as, as->snapno);
   }
   if (irt_isnum(kt)) {
-    emit_branch(as, RISCVI_BNE, tmp1, RID_ZERO, l_end);
-    emit_du(as, RISCVI_LUI, RID_TMP, as->snapno);
+    emit_branch(as, RISCVI_BNE, tmp1, RID_ZERO, l_end, 1);
     emit_ds1s2(as, RISCVI_FEQ_D, tmp1, tmpnum, key);
-    emit_branch(as, RISCVI_BEQ, tmp1, RID_ZERO, l_next);
+    emit_branch(as, RISCVI_BEQ, tmp1, RID_ZERO, l_next, 0);
     emit_dsi(as, RISCVI_SLTIU, tmp1, tmp1, ((int32_t)LJ_TISNUM));
     emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 47);
     emit_ds(as, RISCVI_FMV_D_X, tmpnum, tmp1);
   } else {
-    emit_branch(as, RISCVI_BEQ, tmp1, cmp64, l_end);
-    emit_du(as, RISCVI_LUI, RID_TMP, as->snapno);
+    emit_branch(as, RISCVI_BEQ, tmp1, cmp64, l_end, 1);
   }
   emit_lso(as, RISCVI_LD, tmp1, dest, (int32_t)offsetof(Node, key.u64));
   *l_loop = RISCVI_BNE | RISCVF_S1(tmp1) | RISCVF_S2(RID_ZERO)
@@ -1160,7 +1158,7 @@ static void asm_tbar(ASMState *as, IRIns *ir)
   emit_lso(as, RISCVI_SB, mark, tab, (int32_t)offsetof(GCtab, marked));
   emit_setgl(as, tab, gc.grayagain);	// make tab gray again
   emit_getgl(as, link, gc.grayagain);
-  emit_branch(as, RISCVI_BEQ, RID_TMP, RID_ZERO, l_end);	// black: not jump
+  emit_branch(as, RISCVI_BEQ, RID_TMP, RID_ZERO, l_end, 0);	// black: not jump
   emit_ds1s2(as, RISCVI_XOR, mark, mark, RID_TMP);	// mark=0: gray
   emit_dsi(as, RISCVI_ANDI, RID_TMP, mark, LJ_GC_BLACK);
   emit_lso(as, RISCVI_LBU, mark, tab, ((int32_t)offsetof(GCtab, marked)));
@@ -1182,8 +1180,8 @@ static void asm_obar(ASMState *as, IRIns *ir)
   emit_ds(as, RISCVI_MV, ra_releasetmp(as, ASMREF_TMP1), RID_GL);
   obj = IR(ir->op1)->r;
   tmp = ra_scratch(as, rset_exclude(RSET_GPR, obj));
-  emit_branch(as, RISCVI_BEQ, tmp, RID_ZERO, l_end);
-  emit_branch(as, RISCVI_BEQ, RID_TMP, RID_ZERO, l_end);	// black: jump
+  emit_branch(as, RISCVI_BEQ, tmp, RID_ZERO, l_end, 0);
+  emit_branch(as, RISCVI_BEQ, RID_TMP, RID_ZERO, l_end, 0);	// black: jump
   emit_dsi(as, RISCVI_ANDI, tmp, tmp, LJ_GC_BLACK);
   emit_dsi(as, RISCVI_ANDI, RID_TMP, RID_TMP, LJ_GC_WHITES);
   val = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, obj));
@@ -1748,7 +1746,7 @@ static void asm_gc_check(ASMState *as)
   tmp = ra_releasetmp(as, ASMREF_TMP2);
   emit_loadi(as, tmp, as->gcsteps);
   /* Jump around GC step if GC total < GC threshold. */
-  emit_branch(as, RISCVI_BLTU, RID_TMP, tmp, l_end);
+  emit_branch(as, RISCVI_BLTU, RID_TMP, tmp, l_end, 0);
   emit_getgl(as, tmp, gc.threshold);
   emit_getgl(as, RID_TMP, gc.total);
   as->gcsteps = 0;
