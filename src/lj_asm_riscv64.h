@@ -687,6 +687,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
 
   /* Key not found in chain: jump to exit (if merged) or load niltv. */
   l_end = emit_label(as);
+  int is_lend_exit = 0;
   as->invmcp = NULL;
   if (merge == IR_NE)
     asm_guard(as, RISCVI_BEQ, RID_ZERO, RID_ZERO);
@@ -702,16 +703,17 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
   /* Type and value comparison. */
   if (merge == IR_EQ) {  /* Must match asm_guard(). */
     l_end = asm_exitstub_addr(as, as->snapno);
+    is_lend_exit = 1;
   }
   if (irt_isnum(kt)) {
-    emit_branch(as, RISCVI_BNE, tmp1, RID_ZERO, l_end, 1);
+    emit_branch(as, RISCVI_BNE, tmp1, RID_ZERO, l_end, is_lend_exit);
     emit_ds1s2(as, RISCVI_FEQ_D, tmp1, tmpnum, key);
     emit_branch(as, RISCVI_BEQ, tmp1, RID_ZERO, l_next, 0);
     emit_dsi(as, RISCVI_SLTIU, tmp1, tmp1, ((int32_t)LJ_TISNUM));
     emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 47);
     emit_ds(as, RISCVI_FMV_D_X, tmpnum, tmp1);
   } else {
-    emit_branch(as, RISCVI_BEQ, tmp1, cmp64, l_end, 1);
+    emit_branch(as, RISCVI_BEQ, tmp1, cmp64, l_end, is_lend_exit);
   }
   emit_lso(as, RISCVI_LD, tmp1, dest, (int32_t)offsetof(Node, key.u64));
   *l_loop = RISCVI_BNE | RISCVF_S1(tmp1) | RISCVF_S2(RID_ZERO)
