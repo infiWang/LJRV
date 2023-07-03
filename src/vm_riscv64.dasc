@@ -1782,55 +1782,57 @@ static void build_subroutines(BuildCtx *ctx)
   |   li RD, (2+1)*8
   |  j ->fff_res
   |
-  |.macro math_minmax, name, brins, fpins
+  |.macro math_minmax, name, ismax, fpins
   |  .ffunc_1 name
-  |  add TMP3, BASE, NARGS8:RC
-  |   addi TMP2, BASE, 8
+  |  add RB, BASE, NARGS8:RC
+  |   addi RA, BASE, 8
   |  checkint CARG1, >4
   |1:  // Handle integers.
-  |   ld CARG2, 0(TMP2)
-  |  bxeq TMP2, TMP3, ->fff_restv
+  |   ld CARG2, 0(RA)
+  |  bxeq RA, RB, ->fff_restv
   |   sext.w CARG1, CARG1
   |  checkint CARG2, >3
   |   sext.w CARG2, CARG2
   |   slt TMP0, CARG1, CARG2
-  |  brins TMP0, >2
-  |  mv CARG1, CARG2
-  |2:
-  |  addi TMP2, TMP2, 8
+  |.if ismax
+  |   addi TMP1, TMP0, -1
+  |.else
+  |   neg TMP1, TMP0
+  |.endif
+  | and CARG1, CARG1, TMP1
+  |  not TMP1, TMP1
+  |  and CARG2, CARG2, TMP1
+  |   or CARG1, CARG1, CARG2
+  |  addi RA, RA, 8
   |   zext.w CARG1, CARG1
   |   settp CARG1, TISNUM
   |  j <1
-  |
-  |3:  // Convert intermediate result to number and continue with number loop.
-  |  fcvt.d.w FTMP3, CARG1
+  |3:  // Convert intermediate result to number and continue below.
+  |   fcvt.d.w FARG1, CARG1
   |  checknum CARG2, ->fff_fallback
-  |  fld FARG1, 0(TMP2)
+  |   fld FARG2, 0(RA)
   |  j >6
   |
   |4:
-  |  fld FTMP3, 0(BASE)
-  |5:  // Handle numbers.
-  |   ld CARG2, 0(TMP2)
+  |  fld FARG1, 0(BASE)
   |  checknum CARG1, ->fff_fallback
-  |  fld FTMP4, 0(TMP2)
-  |  bxeq TMP2, TMP3, ->fff_resn
+  |5:  // Handle numbers.
+  |  ld CARG2, 0(RA)
+  |  fld FARG2, 0(RA)
+  |   bxgeu RA, RB, ->fff_resn
   |  checknum CARG2, >7
   |6:
-  |  fpins FRET1, FTMP3, FTMP4
-  |  fmv.d FTMP3, FRET1
-  |  addi TMP2, TMP2, 8
+  |  fpins FARG1, FARG1, FARG2
+  |   addi RA, RA, 8
   |  j <5
-  |
-  |7:  // Convert integer to number and continue with number loop.
-  |  lw TMP1, 0(TMP2)
+  |7:  // Convert integer to number and continue above.
   |  checkint CARG2, ->fff_fallback
-  |  fcvt.d.w FARG1, TMP1
+  |   fcvt.d.w FARG2, CARG2
   |  j <6
   |.endmacro
   |
-  |  math_minmax math_min, bnez, fmin.d
-  |  math_minmax math_max, beqz, fmax.d
+  |  math_minmax math_min, 0, fmin.d
+  |  math_minmax math_max, 1, fmax.d
   |
   |//-- String library -----------------------------------------------------
   |
