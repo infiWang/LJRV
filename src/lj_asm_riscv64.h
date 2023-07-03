@@ -67,29 +67,29 @@ static void asm_sparejump_setup(ASMState *as)
 {
   MCode *mxp = as->mctop;
   if ((char *)mxp == (char *)as->J->mcarea + as->J->szmcarea) {
-    for (int i = RISCV_SPAREJUMP*2; i--; )
-      *--mxp = RISCVI_BEQ | RISCVF_S1(RID_TMP) | RISCVF_S2(RID_TMP);
+    for (int i = RISCV_SPAREJUMP*3; i--; )
+      *--mxp = RISCVI_EBREAK;
     as->mctop = mxp;
   }
 }
 
-static MCode *asm_sparejump_use(MCode *mcarea, MCode *target)
+static MCode *asm_sparejump_use(MCode *mcarea, MCode *target, MCode *ret)
 {
   MCode *mxp = (MCode *)((char *)mcarea + ((MCLink *)mcarea)->size);
   int slot = RISCV_SPAREJUMP;
-  RISCVIns tslot = RISCVI_BEQ | RISCVF_S1(RID_TMP) | RISCVF_S2(RID_TMP),
-           tauipc, tjalr;
-          //  tauipc = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(target)),
-          //  tjalr = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(target));
+  RISCVIns tslot = RISCVI_EBREAK, tauipc, tjalr, rjal;
   while (slot--) {
-    mxp -= 2;
-    ptrdiff_t delta = (char *)target - (char *)mxp;
-    tauipc = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta)),
-    tjalr = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
-    if (mxp[0] == tauipc && mxp[1] == tjalr) {
+    mxp -= 3;
+    ptrdiff_t jdelta = (char *)target - (char *)mxp,
+      rdelta = (char *)ret - (char *)(mxp+2);
+    tauipc = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(jdelta)),
+    tjalr = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_TMP) |
+      RISCVF_IMMI(RISCVF_LO(jdelta)),
+    rjal = RISCVI_JAL | RISCVF_IMMJ(rdelta);
+    if (mxp[0] == tauipc && mxp[1] == tjalr && mxp[2] == rjal) {
       return mxp;
     } else if (mxp[0] == tslot) {
-      mxp[0] = tauipc, mxp[1] = tjalr;
+      mxp[0] = tauipc, mxp[1] = tjalr, mxp[2] = rjal;
       return mxp;
     }
   }
@@ -1903,14 +1903,14 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
          ((p[1] & 0x0000007fu) == 0x6fu) && p[0] != RISCV_NOPATCH_GC_CHECK)) {
       lj_assertJ(checki32(ndelta), "branch target out of range");
       /* Patch jump, if within range. */
-	    patchbranch:
       if (checki21(ndelta)) { /* Patch jump */
+patchbranch:
   p[1] = RISCVI_JAL | RISCVF_IMMJ(ndelta);
   if (!cstart) cstart = p + 1;
       } else {  /* Branch out of range. Use spare jump slot in mcarea. */
-  MCode *mcjump = asm_sparejump_use(mcarea, target);
+  MCode *mcjump = asm_sparejump_use(mcarea, target, p+2);
   if (mcjump) {
-	  lj_mcode_sync(mcjump, mcjump+2);
+	  lj_mcode_sync(mcjump, mcjump+3);
     ndelta = (char *)mcjump - (char *)(p+1);
     if (checki21(ndelta)) {
       goto patchbranch;
