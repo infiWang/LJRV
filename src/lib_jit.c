@@ -652,16 +652,18 @@ JIT_PARAMDEF(JIT_PARAMINIT)
 #include <setjmp.h>
 #include <signal.h>
 static sigjmp_buf sigbuf = {0};
-static void detect_sigill(int sig) {
+static void detect_sigill(int sig)
+{
   siglongjmp(sigbuf, 1);
 }
 
-static int riscv_compressed() {
+static int riscv_compressed()
+{
 #if defined(__riscv_compressed)
   // Don't bother checking for RVC -- would crash before getting here.
   return 1;
 #elif defined(__GNUC__)
-  // c.nop; c.nop
+  // c.nop; c.nop;
   __asm__(".4byte 0x00010001");
   return 1;
 #else
@@ -669,7 +671,8 @@ static int riscv_compressed() {
 #endif
 }
 
-static int riscv_zba() {
+static int riscv_zba()
+{
 #if defined(__GNUC__)
   // Don't bother verifying the result, just check if the instruction exists.
   // add.uw zero, zero, zero
@@ -680,7 +683,8 @@ static int riscv_zba() {
 #endif
 }
 
-static int riscv_zbb() {
+static int riscv_zbb()
+{
 #if defined(__GNUC__)
   register int t asm ("a0");
   // addi a0, zero, 255; sext.b a0, a0;
@@ -691,7 +695,8 @@ static int riscv_zbb() {
 #endif
 }
 
-static uint32_t riscv_probe(int (*func)(void), uint32_t flag) {
+static uint32_t riscv_probe(int (*func)(void), uint32_t flag)
+{
     if (sigsetjmp(sigbuf, 1) == 0) {
         return func() ? flag : 0;
     } else return 0;
@@ -772,7 +777,6 @@ static uint32_t jit_cpudetect(void)
 #elif LJ_TARGET_RISCV64
 #if LJ_HASJIT
   // SIGILL-based detection of RVC, Zba and Zbb. Welcome to the future.
-
   struct sigaction old = {0}, act = {0};
   act.sa_handler = detect_sigill;
   sigaction(SIGILL, &act, &old);
