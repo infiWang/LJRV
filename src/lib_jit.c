@@ -639,7 +639,20 @@ static void detect_sigill(int sig) {
   siglongjmp(sigbuf, 1);
 }
 
-static int rvzba() {
+static int riscv_compressed() {
+#if defined(__riscv_compressed)
+  // Don't bother checking for RVC -- would crash before getting here.
+  return 1;
+#elif defined(__GNUC__)
+  // c.nop; c.nop
+  __asm__(".4byte 0x00010001");
+  return 1;
+#else
+  return 0;
+#endif
+}
+
+static int riscv_zba() {
 #if defined(__GNUC__)
   // Don't bother verifying the result, just check if the instruction exists.
   // add.uw zero, zero, zero
@@ -650,7 +663,7 @@ static int rvzba() {
 #endif
 }
 
-static int rvzbb() {
+static int riscv_zbb() {
 #if defined(__GNUC__)
   register int t asm ("a0");
   // addi a0, zero, 255; sext.b a0, a0;
@@ -741,17 +754,17 @@ static uint32_t jit_cpudetect(void)
 
 #elif LJ_TARGET_RISCV64
 #if LJ_HASJIT
-  // SIGILL-based detection of Zba and Zbb. Welcome to the future.
+  // SIGILL-based detection of RVC, Zba and Zbb. Welcome to the future.
 
   struct sigaction old = {0}, act = {0};
   act.sa_handler = detect_sigill;
   sigaction(SIGILL, &act, &old);
-  flags |= riscv_probe(rvzba, JIT_F_RVZba);
-  flags |= riscv_probe(rvzbb, JIT_F_RVZbb);
+  flags |= riscv_probe(riscv_compressed, JIT_F_RVC);
+  flags |= riscv_probe(riscv_zba, JIT_F_RVZba);
+  flags |= riscv_probe(riscv_zbb, JIT_F_RVZbb);
   sigaction(SIGILL, &old, NULL);
 
-  // Detect C/V/P?
-  // C would need a chunk of mmap memory, and we don't really care about C currently.
+  // Detect V/P?
   // V have no hardware available, P not ratified yet.
 #endif
 
