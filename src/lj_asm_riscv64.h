@@ -402,10 +402,9 @@ static void asm_retf(ASMState *as, IRIns *ir)
   irt_setmark(IR(REF_BASE)->t);  /* Children must not coalesce with BASE reg. */
   emit_setgl(as, base, jit_base);
   emit_addptr(as, base, -8*delta);
-  Reg tmp = ra_scratch(as, rset_exclude(RSET_GPR, base));
-  asm_guard(as, RISCVI_BNE, tmp,
-	    ra_allock(as, igcptr(pc), rset_exclude(rset_exclude(RSET_GPR, base), tmp)));
-  emit_lso(as, RISCVI_LD, tmp, base, -8);
+  asm_guard(as, RISCVI_BNE, RID_TMP,
+	    ra_allock(as, igcptr(pc), rset_exclude(RSET_GPR, base)));
+  emit_lso(as, RISCVI_LD, RID_TMP, base, -8);
 }
 
 /* -- Buffer operations --------------------------------------------------- */
@@ -559,7 +558,7 @@ static void asm_strto(ASMState *as, IRIns *ir)
   asm_gencall(as, ci, args);
   /* Store the result to the spill slot or temp slots. */
   Reg tmp = ra_releasetmp(as, ASMREF_TMP1);
-  emit_opk(as, RISCVI_ADDI, tmp, RID_SP, ofs, RSET_GPR);
+  emit_opk(as, RISCVI_ADDI, tmp, RID_SP, ofs);
 }
 
 /* -- Memory references --------------------------------------------------- */
@@ -606,7 +605,7 @@ static void asm_tvptr(ASMState *as, Reg dest, IRRef ref, MSize mode)	// todo-new
     }
   }
   /* g->tmptv holds the TValue(s). */
-  emit_opk(as, RISCVI_ADDI, dest, RID_GL, offsetof(global_State, tmptv), RSET_GPR);
+  emit_opk(as, RISCVI_ADDI, dest, RID_GL, offsetof(global_State, tmptv));
 }
 
 static void asm_aref(ASMState *as, IRIns *ir)
@@ -620,7 +619,7 @@ static void asm_aref(ASMState *as, IRIns *ir)
     ofs += 8*IR(ir->op2)->i;
     if (checki12(ofs)) {
       base = ra_alloc1(as, refa, RSET_GPR);
-      emit_opk(as, RISCVI_ADDI, dest, base, ofs, rset_exclude(RSET_GPR, base));
+      emit_dsi(as, RISCVI_ADDI, dest, base, ofs);
       return;
     }
   }
@@ -774,8 +773,9 @@ static void asm_hrefk(ASMState *as, IRIns *ir)
   int bigofs = !checki12(ofs);
   Reg dest = (ra_used(ir) || bigofs) ? ra_dest(as, ir, RSET_GPR) : RID_NONE;
   Reg node = ra_alloc1(as, ir->op1, RSET_GPR);
-  Reg key, idx = node;
   RegSet allow = rset_exclude(RSET_GPR, node);
+  Reg idx = node;
+  Reg key = ra_scratch(as, allow);
   int64_t k;
   lj_assertA(ofs % sizeof(Node) == 0, "unaligned HREFK slot");
   if (bigofs) {
@@ -783,7 +783,7 @@ static void asm_hrefk(ASMState *as, IRIns *ir)
     rset_clear(allow, dest);
     kofs = (int32_t)offsetof(Node, key);
   } else if (ra_hasreg(dest)) {
-    emit_opk(as, RISCVI_ADDI, dest, node, ofs, allow);
+    emit_dsi(as, RISCVI_ADDI, dest, node, ofs);
   }
   if (irt_ispri(irkey->t)) {
     lj_assertA(!irt_isnil(irkey->t), "bad HREFK key type");
@@ -811,10 +811,9 @@ static void asm_uref(ASMState *as, IRIns *ir)
     Reg uv = ra_scratch(as, RSET_GPR);
     Reg func = ra_alloc1(as, ir->op1, RSET_GPR);
     if (ir->o == IR_UREFC) {
-      Reg tmp = ra_scratch(as, rset_exclude(rset_exclude(RSET_GPR, dest), uv));
-      asm_guard(as, RISCVI_BEQ, tmp, RID_ZERO);
+      asm_guard(as, RISCVI_BEQ, RID_TMP, RID_ZERO);
       emit_dsi(as, RISCVI_ADDI, dest, uv, (int32_t)offsetof(GCupval, tv));
-      emit_lso(as, RISCVI_LBU, tmp, uv, (int32_t)offsetof(GCupval, closed));
+      emit_lso(as, RISCVI_LBU, RID_TMP, uv, (int32_t)offsetof(GCupval, closed));
     } else {
       emit_lso(as, RISCVI_LD, dest, uv, (int32_t)offsetof(GCupval, v));
     }
@@ -930,14 +929,10 @@ static void asm_xstore_(ASMState *as, IRIns *ir, int32_t ofs)
 
 static void asm_ahuvload(ASMState *as, IRIns *ir)
 {
-  Reg dest = RID_NONE, type, idx;
+  Reg dest = RID_NONE, type = RID_TMP, idx;
   RegSet allow = RSET_GPR;
   int32_t ofs = 0;
   IRType1 t = ir->t;
-
-  type = ra_scratch(as, allow);
-  rset_clear(allow, type);
-
   if (ra_used(ir)) {
     lj_assertA((irt_isnum(ir->t)) || irt_isint(ir->t) || irt_isaddr(ir->t),
 	       "bad load type %d", irt_type(ir->t));
@@ -953,9 +948,8 @@ static void asm_ahuvload(ASMState *as, IRIns *ir)
   if (ir->o == IR_VLOAD) ofs += 8 * ir->op2;
   rset_clear(allow, idx);
   if (irt_isnum(t)) {
-    Reg tmp2 = ra_scratch(as, allow);
-    asm_guard(as, RISCVI_BEQ, tmp2, RID_ZERO);
-    emit_dsi(as, RISCVI_SLTIU, tmp2, type, (int32_t)LJ_TISNUM);
+    asm_guard(as, RISCVI_BEQ, RID_TMP, RID_ZERO);
+    emit_dsi(as, RISCVI_SLTIU, RID_TMP, type, (int32_t)LJ_TISNUM);
   } else {
     asm_guard(as, RISCVI_BNE, type,
 	      ra_allock(as, (int32_t)irt_toitype(t), allow));
@@ -1013,6 +1007,7 @@ static void asm_sload(ASMState *as, IRIns *ir)
   RegSet allow = RSET_GPR;
   IRType1 t = ir->t;
   int32_t ofs = 8*((int32_t)ir->op1-2);
+  lj_assertA(checki12(ofs), "sload IR operand out of range");
   lj_assertA(!(ir->op2 & IRSLOAD_PARENT),
 	     "bad parent SLOAD");  /* Handled by asm_head_side(). */
   lj_assertA(irt_isguard(t) || !(ir->op2 & IRSLOAD_TYPECHECK),
@@ -1058,32 +1053,26 @@ static void asm_sload(ASMState *as, IRIns *ir)
   rset_clear(allow, base);
 dotypecheck:
   if ((ir->op2 & IRSLOAD_TYPECHECK)) {
-    if (dest < RID_MAX_GPR) {
-      type = dest;
-    } else {
-      type = ra_scratch(as, allow);
-    }
-    rset_clear(allow, type);
-    Reg tmp1 = ra_scratch(as, allow);
+    type = dest < RID_MAX_GPR ? dest : RID_TMP;
     if (irt_ispri(t)) {
       asm_guard(as, RISCVI_BNE, type,
 		ra_allock(as, ~((int64_t)~irt_toitype(t) << 47) , allow));
     } else if ((ir->op2 & IRSLOAD_KEYINDEX)) {
-      asm_guard(as, RISCVI_BNE, tmp1,
+      asm_guard(as, RISCVI_BNE, RID_TMP,
                ra_allock(as, (int32_t)LJ_KEYINDEX, allow));
-      emit_dsshamt(as, RISCVI_SRAI, tmp1, type, 32);
+      emit_dsshamt(as, RISCVI_SRAI, RID_TMP, type, 32);
     } else {
       if (irt_isnum(t)) {
-        asm_guard(as, RISCVI_BEQ, tmp1, RID_ZERO);
-        emit_dsi(as, RISCVI_SLTIU, tmp1, tmp1, LJ_TISNUM);
+        asm_guard(as, RISCVI_BEQ, RID_TMP, RID_ZERO);
+        emit_dsi(as, RISCVI_SLTIU, RID_TMP, RID_TMP, LJ_TISNUM);
 	if (ra_hasreg(dest)) {
 	  emit_lso(as, RISCVI_FLD, dest, base, ofs);
 	}
       } else {
-	asm_guard(as, RISCVI_BNE, tmp1,
+	asm_guard(as, RISCVI_BNE, RID_TMP,
 		  ra_allock(as, (int32_t)irt_toitype(t), allow));
       }
-      emit_dsshamt(as, RISCVI_SRAI, tmp1, type, 47);
+      emit_dsshamt(as, RISCVI_SRAI, RID_TMP, type, 47);
     }
     emit_lso(as, RISCVI_LD, type, base, ofs);
   } else if (ra_hasreg(dest)) {
@@ -1305,31 +1294,26 @@ static void asm_neg(ASMState *as, IRIns *ir)
 
 static void asm_arithov(ASMState *as, IRIns *ir)
 {
-  RegSet allow = RSET_GPR;
-  Reg right, left, tmp, tmp2, dest = ra_dest(as, ir, allow);
-  rset_clear(allow, dest);
+  Reg right, left, tmp, dest = ra_dest(as, ir, RSET_GPR);
   lj_assertA(!irt_is64(ir->t), "bad usage");
-  tmp2 = ra_scratch(as, allow);
-  rset_clear(allow, tmp2);
   if (irref_isk(ir->op2)) {
     int k = IR(ir->op2)->i;
-    if (ir->o == IR_SUBOV) k = -k;
+    if (ir->o == IR_SUBOV) k = (int)(~(unsigned int)k+1u);
     if (checki12(k)) {	/* (dest < left) == (k >= 0 ? 1 : 0) */
-      left = ra_alloc1(as, ir->op1, allow);
-      asm_guard(as, k >= 0 ? RISCVI_BNE : RISCVI_BEQ, tmp2, RID_ZERO);
-      emit_ds1s2(as, RISCVI_SLT, tmp2, dest, dest == left ? tmp2 : left);
+      left = ra_alloc1(as, ir->op1, RSET_GPR);
+      asm_guard(as, k >= 0 ? RISCVI_BNE : RISCVI_BEQ, RID_TMP, RID_ZERO);
+      emit_ds1s2(as, RISCVI_SLT, RID_TMP, dest, dest == left ? RID_TMP : left);
       emit_dsi(as, RISCVI_ADDI, dest, left, k);
-      if (dest == left) emit_mv(as, tmp2, left);
+      if (dest == left) emit_mv(as, RID_TMP, left);
       return;
     }
   }
-  left = ra_alloc2(as, ir, allow);
+  left = ra_alloc2(as, ir, RSET_GPR);
   right = (left >> 8); left &= 255;
-  rset_clear(allow, right);
-  rset_clear(allow, left);
-  tmp = ra_scratch(as, allow);
-  asm_guard(as, RISCVI_BLT, tmp2, RID_ZERO);
-  emit_ds1s2(as, RISCVI_AND, tmp2, RID_TMP, tmp);
+  tmp = ra_scratch(as, rset_exclude(rset_exclude(rset_exclude(RSET_GPR, left),
+						 right), dest));
+  asm_guard(as, RISCVI_BLT, RID_TMP, RID_ZERO);
+  emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP, tmp);
   if (ir->o == IR_ADDOV) {  /* ((dest^left) & (dest^right)) < 0 */
     emit_ds1s2(as, RISCVI_XOR, RID_TMP, dest, dest == right ? RID_TMP : right);
   } else {  /* ((dest^left) & (dest^~right)) < 0 */
@@ -1348,17 +1332,11 @@ static void asm_arithov(ASMState *as, IRIns *ir)
 static void asm_mulov(ASMState *as, IRIns *ir)
 {
   Reg dest = ra_dest(as, ir, RSET_GPR);
-  Reg tmp1, tmp2, right, left = ra_alloc2(as, ir, RSET_GPR);
+  Reg right, left = ra_alloc2(as, ir, RSET_GPR);
   right = (left >> 8); left &= 255;
-  tmp1 = ra_scratch(as, RSET_GPR & ~(RID2RSET(left)|RID2RSET(right)
-                                    |RID2RSET(dest)));
-  tmp2 = ra_scratch(as, RSET_GPR &  ~(RID2RSET(left)|RID2RSET(right)
-                                     |RID2RSET(dest)|RID2RSET(tmp1)));
-  asm_guard(as, RISCVI_BNE, tmp1, tmp2);
-  emit_dsshamt(as, RISCVI_SRAI, tmp1, tmp1, 32);	// tmp1: [63:32]
-  emit_dsshamt(as, RISCVI_SRAIW, tmp2, tmp1, 31);
-  emit_ext(as, RISCVI_SEXT_W, dest, tmp1);	// dest: [31:0]+signextend
-  emit_ds1s2(as, RISCVI_MUL, tmp1, left, right);	// tmp1: [63:0]
+  asm_guard(as, RISCVI_BNE, dest, RID_TMP);
+  emit_ext(as, RISCVI_SEXT_W, dest, RID_TMP);	// dest: [31:0]+signextend
+  emit_ds1s2(as, RISCVI_MUL, RID_TMP, left, right);	// RID_TMP: [63:0]
 }
 
 static void asm_bnot(ASMState *as, IRIns *ir)
@@ -1385,52 +1363,50 @@ static void asm_bswap(ASMState *as, IRIns *ir)
       emit_dsshamt(as, RISCVI_SRAI, dest, dest, 32);
     emit_ds(as, RISCVI_REV8, dest, left);
   } else if (irt_is64(ir->t)) {
-    Reg tmp1, tmp2, tmp3, tmp4, tmp5;
+    Reg tmp1, tmp2, tmp3, tmp4;
     tmp1 = ra_scratch(as, allow), allow = rset_exclude(allow, tmp1);
     tmp2 = ra_scratch(as, allow), allow = rset_exclude(allow, tmp2);
     tmp3 = ra_scratch(as, allow), allow = rset_exclude(allow, tmp3);
-    tmp4 = ra_scratch(as, allow), allow = rset_exclude(allow, tmp4);
-    tmp5 = ra_scratch(as, allow);
-    emit_ds1s2(as, RISCVI_OR, dest, dest, tmp2);
+    tmp4 = ra_scratch(as, allow);
+    emit_ds1s2(as, RISCVI_OR, dest, dest, tmp4);
     emit_ds1s2(as, RISCVI_OR, dest, dest, tmp3);
-    emit_ds1s2(as, RISCVI_OR, dest, dest, tmp1);
-    emit_dsshamt(as, RISCVI_SLLI, tmp2, tmp2, 40);
+    emit_ds1s2(as, RISCVI_OR, dest, dest, tmp2);
+    emit_dsshamt(as, RISCVI_SLLI, tmp4, tmp4, 40);
     emit_dsshamt(as, RISCVI_SLLI, dest, left, 56);
-    emit_ds1s2(as, RISCVI_OR, tmp3, tmp4, tmp3);
-    emit_ds1s2(as, RISCVI_AND, tmp2, left, tmp2);
+    emit_ds1s2(as, RISCVI_OR, tmp3, tmp1, tmp3);
+    emit_ds1s2(as, RISCVI_AND, tmp4, left, RID_TMP);
     emit_dsshamt(as, RISCVI_SLLI, tmp3, tmp3, 32);
-    emit_dsshamt(as, RISCVI_SLLI, tmp4, tmp4, 24);
+    emit_dsshamt(as, RISCVI_SLLI, tmp1, tmp1, 24);
     emit_dsshamt(as, RISCVI_SRLIW, tmp3, left, 24);
-    emit_ds1s2(as, RISCVI_OR, tmp1, tmp3, tmp1);
-    emit_ds1s2(as, RISCVI_AND, tmp4, left, tmp4);
-    emit_ds1s2(as, RISCVI_OR, tmp3, tmp5, tmp3);
-    emit_dsshamt(as, RISCVI_SLLI, tmp5, tmp5, 24);
-    emit_dsshamt(as, RISCVI_SRLIW, tmp5, tmp5, 24);
-    emit_ds1s2(as, RISCVI_AND, tmp3, tmp3, tmp4);
-    emit_dsshamt(as, RISCVI_SRLI, tmp5, left, 8);
+    emit_ds1s2(as, RISCVI_OR, tmp2, tmp3, tmp2);
+    emit_ds1s2(as, RISCVI_AND, tmp1, left, tmp1);
+    emit_ds1s2(as, RISCVI_OR, tmp3, tmp4, tmp3);
+    emit_dsshamt(as, RISCVI_SLLI, tmp4, tmp4, 24);
+    emit_dsshamt(as, RISCVI_SRLIW, tmp4, tmp4, 24);
+    emit_ds1s2(as, RISCVI_AND, tmp3, tmp3, tmp1);
+    emit_dsshamt(as, RISCVI_SRLI, tmp4, left, 8);
     emit_dsshamt(as, RISCVI_SRLI, tmp3, left, 24);
-    emit_ds1s2(as, RISCVI_OR, tmp1, tmp1, tmp3);
-    emit_du(as, RISCVI_LUI, tmp4, RISCVF_HI(0xff0000));
-    emit_ds1s2(as, RISCVI_AND, tmp1, tmp1, tmp2);
+    emit_ds1s2(as, RISCVI_OR, tmp2, tmp2, tmp3);
+    emit_du(as, RISCVI_LUI, tmp1, RISCVF_HI(0xff0000u));
+    emit_ds1s2(as, RISCVI_AND, tmp2, tmp2, RID_TMP);
     emit_dsshamt(as, RISCVI_SRLI, tmp3, left, 56);
-    emit_dsi(as, RISCVI_ADDI, tmp2, tmp2, RISCVF_LO(0xff00));
-    emit_du(as, RISCVI_LUI, tmp2, RISCVF_HI(0xff00));
-    emit_dsshamt(as, RISCVI_SRLI, tmp1, left, 40);
+    emit_dsi(as, RISCVI_ADDI, RID_TMP, RID_TMP, RISCVF_LO(0xff00));
+    emit_du(as, RISCVI_LUI, RID_TMP, RISCVF_HI(0xff00u));
+    emit_dsshamt(as, RISCVI_SRLI, tmp2, left, 40);
   } else {
-    Reg tmp1, tmp2, tmp3;
+    Reg tmp1, tmp2;
     tmp1 = ra_scratch(as, allow), allow = rset_exclude(allow, tmp1);
-    tmp2 = ra_scratch(as, allow), allow = rset_exclude(allow, tmp2);
-    tmp3 = ra_scratch(as, allow);
+    tmp2 = ra_scratch(as, allow);
     emit_ds1s2(as, RISCVI_OR, dest, dest, tmp2);
     emit_ds1s2(as, RISCVI_OR, dest, dest, tmp1);
-    emit_dsshamt(as, RISCVI_SLLI, tmp2, tmp2, 8);
+    emit_dsshamt(as, RISCVI_SLLI, tmp2, RID_TMP, 8);
     emit_dsshamt(as, RISCVI_SLLIW, dest, left, 24);
-    emit_ds1s2(as, RISCVI_OR, tmp1, tmp1, tmp3);
-    emit_ds1s2(as, RISCVI_AND, tmp2, left, tmp2);
-    emit_ds1s2(as, RISCVI_AND, tmp1, tmp1, tmp2);
-    emit_dsshamt(as, RISCVI_SRLIW, tmp3, left, 24);
-    emit_dsi(as, RISCVI_ADDI, tmp2, tmp2, RISCVF_LO(0xff00));
-    emit_du(as, RISCVI_LUI, tmp2, RISCVF_HI(0xff00));
+    emit_ds1s2(as, RISCVI_OR, tmp1, tmp1, tmp2);
+    emit_ds1s2(as, RISCVI_AND, RID_TMP, left, RID_TMP);
+    emit_ds1s2(as, RISCVI_AND, tmp1, tmp1, RID_TMP);
+    emit_dsshamt(as, RISCVI_SRLIW, tmp2, left, 24);
+    emit_dsi(as, RISCVI_ADDI, RID_TMP, RID_TMP, RISCVF_LO(0xff00));
+    emit_du(as, RISCVI_LUI, RID_TMP, RISCVF_HI(0xff00u));
     emit_dsshamt(as, RISCVI_SRLI, tmp1, left, 8);
   }
 }
@@ -1544,9 +1520,9 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
   emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
   emit_ds1s2(as, RISCVI_AND, dest, right, RID_TMP);
       }
-      emit_ds2(as, RISCVI_NEG, RID_TMP, RID_TMP);
+      emit_dsi(as, RISCVI_ADDI, RID_TMP, RID_TMP, -1);
       emit_ds1s2(as, RISCVI_SLT, RID_TMP,
-         ismax ? right : left, ismax ? left : right);
+         ismax ? left : right, ismax ? right : left);
     }
   }
 }
@@ -1663,11 +1639,9 @@ static void asm_hiop(ASMState *as, IRIns *ir)
 static void asm_prof(ASMState *as, IRIns *ir)
 {
   UNUSED(ir);
-  Reg tmp = ra_scratch(as, RSET_GPR);
-  asm_guard(as, RISCVI_BNE, tmp, RID_ZERO);
-  emit_opk(as, RISCVI_ANDI, tmp, tmp, HOOK_PROFILE,
-           rset_exclude(RSET_GPR, tmp));
-  emit_lsglptr(as, RISCVI_LBU, tmp,
+  asm_guard(as, RISCVI_BNE, RID_TMP, RID_ZERO);
+  emit_dsi(as, RISCVI_ANDI, RID_TMP, RID_TMP, HOOK_PROFILE);
+  emit_lsglptr(as, RISCVI_LBU, RID_TMP,
          (int32_t)offsetof(global_State, hookmask));
 }
 
