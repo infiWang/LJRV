@@ -1363,9 +1363,16 @@ static void asm_mulov(ASMState *as, IRIns *ir)
 
 static void asm_bnot(ASMState *as, IRIns *ir)
 {
-  Reg left, dest = ra_dest(as, ir, RSET_GPR);
-  left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
-  emit_ds(as, RISCVI_NOT, dest, left);
+  Reg left, right, dest = ra_dest(as, ir, RSET_GPR);
+  IRIns *irl = IR(ir->op1);
+  if (as->flags & JIT_F_RVZbb && mayfuse(as, ir->op1) && irl->o == IR_BXOR) {
+    left = ra_alloc2(as, irl, RSET_GPR);
+    right = (left >> 8); left &= 255;
+    emit_ds1s2(as, RISCVI_XNOR, dest, left, right);
+  } else {
+    left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
+    emit_ds(as, RISCVI_NOT, dest, left);
+  }
 }
 
 static void asm_bswap(ASMState *as, IRIns *ir)
@@ -1428,22 +1435,39 @@ static void asm_bswap(ASMState *as, IRIns *ir)
   }
 }
 
-static void asm_bitop(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns riscvik)
+static void asm_bitop(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns riscvik, RISCVIns riscvin)
 {
   Reg dest = ra_dest(as, ir, RSET_GPR);
-  Reg right, left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
+  Reg left, right;
+  IRIns *irl = IR(ir->op1), *irr = IR(ir->op2);
   if (irref_isk(ir->op2)) {
     intptr_t k = get_kval(as, ir->op2);
-    emit_opk(as, riscvik, dest, left, k, rset_exclude(RSET_GPR, left));
-  } else {
-    right = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, left));
-    emit_ds1s2(as, riscvi, dest, left, right);
+    if (checki12(k)) {
+      left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
+      emit_dsi(as, riscvik, dest, left, k);
+      return;
+    }
+  } else if (as->flags & JIT_F_RVZbb) {
+    if (mayfuse(as, ir->op1) && irl->o == IR_BNOT) {
+      left = ra_alloc1(as, irl->op1, RSET_GPR);
+      right = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, left));
+      emit_ds1s2(as, riscvin, dest, right, left);
+      return;
+    } else if (mayfuse(as, ir->op2) && irr->o == IR_BNOT) {
+      left = ra_alloc1(as, ir->op1, RSET_GPR);
+      right = ra_alloc1(as, irr->op1, rset_exclude(RSET_GPR, left));
+      emit_ds1s2(as, riscvin, dest, left, right);
+      return;
+    }
   }
+  left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
+  right = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, left));
+  emit_ds1s2(as, riscvi, dest, left, right);
 }
 
-#define asm_band(as, ir)	asm_bitop(as, ir, RISCVI_AND, RISCVI_ANDI)
-#define asm_bor(as, ir)		asm_bitop(as, ir, RISCVI_OR, RISCVI_ORI)
-#define asm_bxor(as, ir)	asm_bitop(as, ir, RISCVI_XOR, RISCVI_XORI)
+#define asm_band(as, ir)	asm_bitop(as, ir, RISCVI_AND, RISCVI_ANDI, RISCVI_ANDN)
+#define asm_bor(as, ir)	asm_bitop(as, ir, RISCVI_OR, RISCVI_ORI, RISCVI_ORN)
+#define asm_bxor(as, ir)	asm_bitop(as, ir, RISCVI_XOR, RISCVI_XORI, RISCVI_XNOR)
 
 static void asm_bitshift(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns riscvik)
 {
