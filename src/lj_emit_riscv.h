@@ -380,15 +380,10 @@ static void emit_movrr(ASMState *as, IRIns *ir, Reg dst, Reg src)
 
 /* Emit an arithmetic operation with a constant operand. */
 static void emit_opk(ASMState *as, RISCVIns riscvi, Reg dest, Reg src,
-         intptr_t i, RegSet allow)
+         intptr_t k)
 {
-  if (((riscvi == RISCVI_ADDI) && checki12((uintptr_t)i)) ||
-      (((riscvi == RISCVI_XORI) || (riscvi == RISCVI_ORI)) &&
-       (i >= 0 ? checki12((uintptr_t)i << 1) : checki12((uintptr_t)i))) ||
-      ((riscvi == RISCVI_ANDI) &&
-       (i >= 0 ? checki12((uintptr_t)i) : checki12((uintptr_t)i << 1)))) {
-    emit_dsi(as, riscvi, dest, src, i);
-  } else {
+  if (checki12(k)) emit_dsi(as, riscvi, dest, src, k);
+  else {
     switch (riscvi) {
       case RISCVI_ADDI: riscvi = RISCVI_ADD; break;
       case RISCVI_XORI: riscvi = RISCVI_XOR; break;
@@ -396,7 +391,8 @@ static void emit_opk(ASMState *as, RISCVIns riscvi, Reg dest, Reg src,
       case RISCVI_ANDI: riscvi = RISCVI_AND; break;
       default: lj_assertA(0, "NYI arithmetic RISCVIns"); return;
     }
-    emit_ds1s2(as, riscvi, dest, src, ra_allock(as, i, allow));
+    emit_ds1s2(as, riscvi, dest, src, RID_TMP);
+    emit_loadu64(as, RID_TMP, (uintptr_t)k);
   }
 }
 
@@ -422,7 +418,7 @@ static void emit_storeofs(ASMState *as, IRIns *ir, Reg r, Reg base, int32_t ofs)
 static void emit_addptr(ASMState *as, Reg r, int32_t ofs)
 {
   if (ofs)
-    emit_opk(as, RISCVI_ADDI, r, r, ofs, rset_exclude(RSET_GPR, r));
+    emit_opk(as, RISCVI_ADDI, r, r, ofs);
 }
 
 
