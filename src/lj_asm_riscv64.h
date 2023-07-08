@@ -287,21 +287,21 @@ static void asm_gencall(ASMState *as, const CCallInfo *ci, IRRef *args)
   gpr = REGARG_FIRSTGPR;
   for (n = 0; n < nargs; n++) { /* Setup args. */
     IRRef ref = args[n];
+    IRIns *ir = IR(ref);
     if (ref) {
-      IRIns *ir = IR(ref);
-      if (irt_isfp(ir->t) && (n == 0 || !(ci->flags & CCI_VARARG))) {
+      if (irt_isfp(ir->t)) {
         if (fpr <= REGARG_LASTFPR) {
 	  lj_assertA(rset_test(as->freeset, fpr),
 	             "reg %d not free", fpr);  /* Must have been evicted. */
           ra_leftov(as, fpr, ref);
-	  fpr++;
-	} else if (gpr <= REGARG_LASTGPR) {
+	  fpr++; if(ci->flags & CCI_VARARG) gpr++;
+	} else if (!(ci->flags & CCI_VARARG) && gpr <= REGARG_LASTGPR) {
 	  lj_assertA(rset_test(as->freeset, gpr),
 	             "reg %d not free", gpr);  /* Must have been evicted. */
           ra_leftov(as, gpr, ref);
 	  gpr++;
 	} else {
-	  Reg r = ra_alloc1z(as, ref, RSET_FPR);
+	  Reg r = ra_alloc1(as, ref, RSET_FPR);
 	  emit_spstore(as, ir, r, ofs);
 	  ofs += 8;
 	}
@@ -310,9 +310,9 @@ static void asm_gencall(ASMState *as, const CCallInfo *ci, IRRef *args)
 	  lj_assertA(rset_test(as->freeset, gpr),
 	             "reg %d not free", gpr);  /* Must have been evicted. */
           ra_leftov(as, gpr, ref);
-	  gpr++;
+	  gpr++; if(ci->flags & CCI_VARARG) fpr++;
 	} else {
-	  Reg r = ra_alloc1(as, ref, RSET_GPR);
+	  Reg r = ra_alloc1z(as, ref, RSET_GPR);
 	  emit_spstore(as, ir, r, ofs);
 	  ofs += 8;
 	}
