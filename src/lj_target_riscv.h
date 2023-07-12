@@ -459,9 +459,46 @@ typedef enum RISCVIns {
   RISCVI_RORW = 0x6000503b,
 #endif
   /* NYI: Zbc, Zbs */
-  /* TBD: Zbk* */
 
   /* TBD: RVV?, RVP?, RVJ? */
+
+  /* --- XThead* --- */
+  /* XTHeadBa */
+  RISCVI_TH_ADDSL = 0x0000100b,
+
+  /* XTHeadBb */
+  RISCVI_TH_SRRI = 0x1000100b,
+#if LJ_TARGET_RISCV64
+  RISCVI_TH_SRRIW = 0x1400100b,
+#endif
+  RISCVI_TH_EXT = 0x0000200b,
+  RISCVI_TH_EXTU = 0x0000300b,
+  RISCVI_TH_FF0 = 0x8400100b,
+  RISCVI_TH_FF1 = 0x8600100b,
+  RISCVI_TH_REV = 0x8200100b,
+#if LJ_TARGET_RISCV64
+  RISCVI_TH_REVW = 0x9000100b,
+#endif
+  RISCVI_TH_TSTNBZ = 0x8000100b,
+
+  /* XTHeadBs */
+  RISCVI_TH_TST = 0x8800100b,
+
+  /* XTHeadCondMov */
+  RISCVI_TH_MVEQZ = 0x4000100b,
+  RISCVI_TH_MVNEZ = 0x4200100b,
+
+  /* XTHeadMac */
+  RISCVI_TH_MULA = 0x2000100b,
+  RISCVI_TH_MULAH = 0x2800100b,
+#if LJ_TARGET_RISCV64
+  RISCVI_TH_MULAW = 0x2400100b,
+#endif
+  RISCVI_TH_MULS = 0x2200100b,
+  RISCVI_TH_MULSH = 0x2a00100b,
+  RISCVI_TH_MULSW = 0x2600100b,
+
+  /* NYI: XTHeadMemIdx, XTHeadFMemIdx, XTHeadMemPair */
 } RISCVIns;
 
 typedef enum RISCVRM {

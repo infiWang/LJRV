@@ -250,6 +250,29 @@ static void asm_fusexref(ASMState *as, RISCVIns riscvi, Reg rd, IRRef ref,
   emit_lso(as, riscvi, rd, base, ofs);
 }
 
+/* Fuse Integer multiply-accumulate. */
+
+static int asm_fusemac(ASMState *as, IRIns *ir, RISCVIns riscvi)
+{
+  IRRef lref = ir->op1, rref = ir->op2;
+  IRIns *irm;
+  if (lref != rref &&
+      ((mayfuse(as, lref) && (irm = IR(lref), irm->o == IR_MUL) &&
+       ra_noreg(irm->r)) ||
+       (mayfuse(as, rref) && (irm = IR(rref), irm->o == IR_MUL) &&
+       (rref = lref, ra_noreg(irm->r))))) {
+    Reg dest = ra_dest(as, ir, RSET_GPR);
+    Reg add = ra_hintalloc(as, rref, dest, RSET_GPR);
+    Reg left = ra_alloc2(as, irm,
+       rset_exclude(rset_exclude(RSET_GPR, dest), add));
+    Reg right = (left >> 8); left &= 255;
+    emit_ds1s2(as, riscvi, dest, left, right);
+    if (dest != add) emit_mv(as, dest, add);
+    return 1;
+  }
+  return 0;
+}
+
 /* Fuse FP multiply-add/sub. */
 
 static int asm_fusemadd(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns riscvir)
@@ -625,8 +648,7 @@ static void asm_aref(ASMState *as, IRIns *ir)
   }
   base = ra_alloc1(as, ir->op1, RSET_GPR);
   idx = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, base));
-  emit_ds1s2(as, RISCVI_ADD, dest, RID_TMP, base);
-  emit_dsshamt(as, RISCVI_SLLI, RID_TMP, idx, 3);
+  emit_sh3add(as, dest, base, idx);
 }
 
 /* Inlined hash lookup. Specialized for key type and for const keys.
@@ -939,8 +961,7 @@ static void asm_ahuvload(ASMState *as, IRIns *ir)
     dest = ra_dest(as, ir, irt_isnum(t) ? RSET_FPR : allow);
     rset_clear(allow, dest);
     if (irt_isaddr(t)) {
-      emit_dsshamt(as, RISCVI_SRLI, dest, dest, 17);
-      emit_dsshamt(as, RISCVI_SLLI, dest, dest, 17);
+      emit_cleartp(as, dest, dest);
     } else if (irt_isint(t))
       emit_ext(as, RISCVI_SEXT_W, dest, dest);
   }
@@ -1027,8 +1048,7 @@ static void asm_sload(ASMState *as, IRIns *ir)
     base = ra_alloc1(as, REF_BASE, allow);
     rset_clear(allow, base);
     if (irt_isaddr(t)) { /* Clear type from pointers. */
-      emit_dsshamt(as, RISCVI_SRLI, dest, dest, 17);
-      emit_dsshamt(as, RISCVI_SLLI, dest, dest, 17);
+      emit_cleartp(as, dest, dest);
     } else if (ir->op2 & IRSLOAD_CONVERT) {
       if (irt_isint(t)) {
 	emit_ds(as, RISCVI_FCVT_W_D|RISCVF_RM(RISCVRM_RTZ), dest, tmp);
@@ -1226,6 +1246,8 @@ static void asm_add(ASMState *as, IRIns *ir)
       asm_fparith(as, ir, RISCVI_FADD_D);
     return;
   } else {
+    if ((as->flags & JIT_F_RVXThead) && asm_fusemac(as, ir, RISCVI_TH_MULA))
+      return;
     Reg dest = ra_dest(as, ir, RSET_GPR);
     Reg left = ra_hintalloc(as, ir->op1, dest, RSET_GPR);
     if (irref_isk(ir->op2)) {
@@ -1252,6 +1274,8 @@ static void asm_sub(ASMState *as, IRIns *ir)
       asm_fparith(as, ir, RISCVI_FSUB_D);
     return;
   } else {
+    if ((as->flags & JIT_F_RVXThead) && asm_fusemac(as, ir, RISCVI_TH_MULS))
+      return;
     Reg dest = ra_dest(as, ir, RSET_GPR);
     Reg right, left = ra_alloc2(as, ir, RSET_GPR);
     right = (left >> 8); left &= 255;
@@ -1317,8 +1341,7 @@ static void asm_arithov(ASMState *as, IRIns *ir)
   if (ir->o == IR_ADDOV) {  /* ((dest^left) & (dest^right)) < 0 */
     emit_ds1s2(as, RISCVI_XOR, RID_TMP, dest, dest == right ? RID_TMP : right);
   } else {  /* ((dest^left) & (dest^~right)) < 0 */
-    emit_ds1s2(as, RISCVI_XOR, RID_TMP, RID_TMP, dest);
-    emit_ds(as, RISCVI_NOT, RID_TMP, dest == right ? RID_TMP : right);
+    emit_xnor(as, RID_TMP, dest, dest == right ? RID_TMP : right);
   }
   emit_ds1s2(as, RISCVI_XOR, tmp, dest, dest == left ? RID_TMP : left);
   emit_ds1s2(as, ir->o == IR_ADDOV ? RISCVI_ADDW : RISCVI_SUBW, dest, left, right);
@@ -1362,6 +1385,9 @@ static void asm_bswap(ASMState *as, IRIns *ir)
     if (!irt_is64(ir->t))
       emit_dsshamt(as, RISCVI_SRAI, dest, dest, 32);
     emit_ds(as, RISCVI_REV8, dest, left);
+  } else if (as->flags & JIT_F_RVXThead) {
+    emit_ds(as, irt_is64(ir->t) ? RISCVI_TH_REV : RISCVI_TH_REVW,
+       dest, left);
   } else if (irt_is64(ir->t)) {
     Reg tmp1, tmp2, tmp3, tmp4;
     tmp1 = ra_scratch(as, allow), allow = rset_exclude(allow, tmp1);
@@ -1510,17 +1536,28 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
     if (as->flags & JIT_F_RVZbb) {
       emit_ds1s2(as, ismax ? RISCVI_MAX : RISCVI_MIN, dest, left, right);
     } else {
-      emit_ds1s2(as, RISCVI_OR, dest, dest, RID_TMP); 
-      if (dest != right) {
-  emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP,right); 
-  emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
-  emit_ds1s2(as, RISCVI_AND, dest, left, RID_TMP);
+      if (as->flags & JIT_F_RVXThead) {
+  if (left == right) {
+    if (dest != left) emit_mv(as, dest, left);
+  } else {
+    if (dest == left) {
+	    emit_ds1s2(as, RISCVI_TH_MVNEZ, dest, right, RID_TMP);
+    } else {
+	    emit_ds1s2(as, RISCVI_TH_MVEQZ, dest, left, RID_TMP);
+	    if (dest != right) emit_mv(as, dest, right);
+    }
+  }
       } else {
-  emit_ds1s2(as, RISCVI_AND, RID_TMP, RID_TMP, left); 
-  emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
-  emit_ds1s2(as, RISCVI_AND, dest, right, RID_TMP);
+  emit_ds1s2(as, RISCVI_OR, dest, dest, RID_TMP);
+  if (dest != right) {
+    emit_andn(as, RID_TMP, right, RID_TMP, RID_TMP);
+    emit_ds1s2(as, RISCVI_AND, dest, left, RID_TMP);
+  } else {
+    emit_andn(as, RID_TMP, left, RID_TMP, RID_TMP);
+    emit_ds1s2(as, RISCVI_AND, dest, right, RID_TMP);
+  }
+  emit_dsi(as, RISCVI_ADDI, RID_TMP, RID_TMP, -1);
       }
-      emit_dsi(as, RISCVI_ADDI, RID_TMP, RID_TMP, -1);
       emit_ds1s2(as, RISCVI_SLT, RID_TMP,
          ismax ? left : right, ismax ? right : left);
     }

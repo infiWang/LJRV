@@ -101,7 +101,12 @@ static void emit_lso(ASMState *as, RISCVIns riscvi, Reg data, Reg base, int32_t 
 
 static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t shamt)
 {
-  if (as->flags & JIT_F_RVZbb) {
+  if (as->flags & JIT_F_RVZbb || as->flags & JIT_F_RVXThead) {
+    if (as->flags & JIT_F_RVXThead) switch (riscvi) {
+      case RISCVI_RORI: riscvi = RISCVI_TH_SRRI; break;
+      case RISCVI_RORIW: riscvi = RISCVI_TH_SRRIW; break;
+      default: lj_assertA(0, "invalid roti op"); break;
+    }
     emit_dsshamt(as, riscvi, rd, rs1, shamt);
   } else {
     RISCVIns ai, bi;
@@ -167,6 +172,31 @@ static void emit_ext(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1)
   if ((riscvi != RISCVI_ZEXT_W && as->flags & JIT_F_RVZbb) ||
       (riscvi == RISCVI_ZEXT_W && as->flags & JIT_F_RVZba)) {
     emit_ds(as, riscvi, rd, rs1);
+  } else if (as->flags & JIT_F_RVXThead) {
+    uint32_t hi, sext;
+    switch (riscvi) {
+      case RISCVI_ZEXT_B:
+      case RISCVI_SEXT_W:
+        emit_ds(as, riscvi, rd, rs1);
+        return;
+      case RISCVI_ZEXT_H:
+        hi = 15, sext = 0;
+        break;
+      case RISCVI_ZEXT_W:
+        hi = 31, sext = 0;
+        break;
+      case RISCVI_SEXT_B:
+        hi = 7, sext = 1;
+        break;
+      case RISCVI_SEXT_H:
+        hi = 15, sext = 1;
+        break;
+      default:
+        lj_assertA(0, "invalid ext op");
+        return;
+    }
+    emit_dsi(as, sext ? RISCVI_TH_EXT : RISCVI_TH_EXTU,
+      rd, rs1, hi << 6);
   } else {
     RISCVIns sli, sri;
     int32_t shamt;
@@ -199,6 +229,67 @@ static void emit_ext(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1)
     emit_dsshamt(as, sli, rd, rs1, shamt);
   }
 }
+
+static void emit_cleartp(ASMState *as, Reg rd, Reg rs1)
+{
+  if (as->flags & JIT_F_RVXThead) {
+    emit_dsi(as, RISCVI_TH_EXTU, rd, rs1, 46u << 6);
+  } else {
+    emit_dsshamt(as, RISCVI_SRLI, rd, rd, 17);
+    emit_dsshamt(as, RISCVI_SLLI, rd, rs1, 17);
+  }
+}
+
+static void emit_andn(ASMState *as, Reg rd, Reg rs1, Reg rs2, Reg tmp)
+{
+  if (as->flags & JIT_F_RVZbb) {
+    emit_ds1s2(as, RISCVI_ANDN, rd, rs1, rs2);
+  } else {
+    emit_ds1s2(as, RISCVI_AND, rd, rs1, tmp);
+    emit_ds(as, RISCVI_NOT, tmp, rs2);
+  }
+}
+
+static void emit_orn(ASMState *as, Reg rd, Reg rs1, Reg rs2, Reg tmp)
+{
+  if (as->flags & JIT_F_RVZbb) {
+    emit_ds1s2(as, RISCVI_ORN, rd, rs1, rs2);
+  } else {
+    emit_ds1s2(as, RISCVI_OR, rd, rs1, tmp);
+    emit_ds(as, RISCVI_NOT, tmp, rs2);
+  }
+}
+
+static void emit_xnor(ASMState *as, Reg rd, Reg rs1, Reg rs2)
+{
+  if (as->flags & JIT_F_RVZbb) {
+    emit_ds1s2(as, RISCVI_XNOR, rd, rs1, rs2);
+  } else {
+    emit_ds(as, RISCVI_NOT, rd, rd);
+    emit_ds1s2(as, RISCVI_XOR, rd, rs1, rs2);
+  }
+}
+
+static void emit_shxadd(ASMState *as, Reg rd, Reg rs1, Reg rs2, unsigned int shamt)
+{
+  if (as->flags & JIT_F_RVZba) {
+    switch (shamt) {
+      case 1: emit_ds1s2(as, RISCVI_SH1ADD, rd, rs2, rs1); break;
+      case 2: emit_ds1s2(as, RISCVI_SH2ADD, rd, rs2, rs1); break;
+      case 3: emit_ds1s2(as, RISCVI_SH3ADD, rd, rs2, rs1); break;
+      default: return;
+    }
+  } else if (as->flags & JIT_F_RVXThead) {
+    emit_dsi(as, RISCVI_TH_ADDSL|RISCVF_IMMI(shamt<<5), rd, rs1, rs2);
+  } else {
+    emit_ds1s2(as, RISCVI_ADD, rd, rs1, RID_TMP);
+    emit_dsshamt(as, RISCVI_SLLI, RID_TMP, rs2, 3);
+  }
+}
+
+#define emit_sh1add(as, rd, rs1, rs2) emit_shxadd(as, rd, rs1, rs2, 1)
+#define emit_sh2add(as, rd, rs1, rs2) emit_shxadd(as, rd, rs1, rs2, 2)
+#define emit_sh3add(as, rd, rs1, rs2) emit_shxadd(as, rd, rs1, rs2, 3)
 
 static void emit_loadk12(ASMState *as, Reg rd, int32_t i)
 {

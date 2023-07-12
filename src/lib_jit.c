@@ -678,6 +678,20 @@ static int riscv_zbb()
 #endif
 }
 
+static int riscv_xthead()
+{
+#if defined(__GNUC__)
+    register int t asm ("a0");
+    // C906 & C910 & C908 all have "xtheadc", XTheadBb subset "xtheadc".
+    // Therefore assume XThead* are present if XTheadBb is present.
+    // addi a0, zero, 255; th.ext a0, a0, 7, 0;
+    __asm__("addi a0, zero, 255\n\t.4byte 0x1c05250b");
+    return t == -1;		// In case of collision with other vendor extensions.
+#else
+    return 0;
+#endif
+}
+
 static uint32_t riscv_probe(int (*func)(void), uint32_t flag)
 {
     if (sigsetjmp(sigbuf, 1) == 0) {
@@ -759,13 +773,14 @@ static uint32_t jit_cpudetect(void)
 
 #elif LJ_TARGET_RISCV64
 #if LJ_HASJIT
-  // SIGILL-based detection of RVC, Zba and Zbb. Welcome to the future.
+  // SIGILL-based detection of RVC, Zba, Zbb and XThead. Welcome to the future.
   struct sigaction old = {0}, act = {0};
   act.sa_handler = detect_sigill;
   sigaction(SIGILL, &act, &old);
   flags |= riscv_probe(riscv_compressed, JIT_F_RVC);
   flags |= riscv_probe(riscv_zba, JIT_F_RVZba);
   flags |= riscv_probe(riscv_zbb, JIT_F_RVZbb);
+  flags |= riscv_probe(riscv_xthead, JIT_F_RVXThead);
   sigaction(SIGILL, &old, NULL);
 
   // Detect V/P?
