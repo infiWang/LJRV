@@ -20,7 +20,7 @@ For production usage, we suggests disable the JIT compiler during compilation by
 
 ## Bug Report
 
-Please report bugs to [Issues](https://github.com/infiWang/LuaJIT-RV/issues).
+Please report bugs to [Issues](https://github.com/ruyisdk/LuaJIT/issues).
 
 ## Copyright
 
@@ -30,4 +30,4 @@ See full Copyright Notice in the COPYRIGHT file or in luajit.h.
 
 LJRV is Copyright (C) 2022-2023 PLCT Lab, ISCAS. Contributed by gns.
 LJRV is free software, released under the MIT license.
-LJRV is part of RuyiSDK, PLCT Lab, ISCAS.
+LJRV is part of RuyiSDK.
