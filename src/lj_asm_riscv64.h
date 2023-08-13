@@ -912,9 +912,9 @@ static void asm_fload(ASMState *as, IRIns *ir)
       }
     }
     ofs = field_ofs[ir->op2];
+    lj_assertA(!irt_isfp(ir->t), "bad FP FLOAD");
   }
   rset_clear(allow, idx);
-  lj_assertA(!irt_isfp(ir->t), "bad FP FLOAD");
   emit_lso(as, riscvi, dest, idx, ofs);
 }
 
