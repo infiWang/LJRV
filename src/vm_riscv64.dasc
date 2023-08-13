@@ -2381,7 +2381,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd BASE, L->base
   |1:
   |  ld LFUNC:RB, FRAME_FUNC(BASE)
-  |  bltz CRET1, >9			// Check for error from exit.
+  |  sltiu TMP0, CRET1, -LUA_ERRERR  // Check for error from exit.
+  |  beqz TMP0, >9
   |  lui TMP3, 0x43380		// TOBIT = Hiword of 2^52 + 2^51 (double).
   |  slli MULTRES, CRET1, 3
   |  cleartp LFUNC:RB
@@ -2395,16 +2396,19 @@ static void build_subroutines(BuildCtx *ctx)
   |  fmv.d.x TOBIT, TMP3
   |  // Modified copy of ins_next which handles function header dispatch, too.
   |  lw INS, 0(PC)
-  |  addi PC, PC, 4
+  |   addi PC, PC, 4
+  |  addiw CRET1, CRET1, 17		// Static dispatch?
   |  // Assumes TISNIL == ~LJ_VMST_INTERP == -1
   |  sw TISNIL, GL->vmstate
+  |   decode_RD8a RD, INS
+  |  beqz CRET1, >5
   |  decode_OP8 TMP1, INS
-  |  sltiu TMP2, TMP1, BC_FUNCF*8
   |  add TMP0, DISPATCH, TMP1
-  |  decode_RD8 RD, INS
+  |    sltiu TMP2, TMP1, BC_FUNCF*8
   |  ld TMP3, 0(TMP0)
-  |  decode_RA8 RA, INS
-  |  beqz TMP2, >2
+  |   decode_RA8 RA, INS
+  |    beqz TMP2, >2
+  |   decode_RD8b RD
   |  jr TMP3
   |2:
   |  sltiu TMP2, TMP1, (BC_FUNCC+2)*8	// Fast function?
@@ -2424,6 +2428,21 @@ static void build_subroutines(BuildCtx *ctx)
   |3:
   |  addi RC, MULTRES, -8
   |  add RA, RA, BASE
+  |  jr TMP3
+  |
+  |5:  // Dispatch to static entry of original ins replaced by BC_JLOOP.
+  |  ld TMP0, GL_J(trace)(GL)
+  |  decode_RD8b RD
+  |  add TMP0, TMP0, RD
+  |  ld TRACE:TMP2, 0(TMP0)
+  |  lw INS, TRACE:TMP2->startins
+  |  decode_OP8 TMP1, INS
+  |  add TMP0, DISPATCH, TMP1
+  |   decode_RD8a RD, INS
+  |  ld TMP3, GG_DISP2STATIC(TMP0)
+  |   decode_RA8a RA, INS
+  |   decode_RD8b RD
+  |   decode_RA8b RA
   |  jr TMP3
   |
   |9:  // Rethrow error from the right C frame.
