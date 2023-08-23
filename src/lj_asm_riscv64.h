@@ -1380,7 +1380,7 @@ static void asm_bswap(ASMState *as, IRIns *ir)
 {
   Reg dest = ra_dest(as, ir, RSET_GPR);
   Reg left = ra_alloc1(as, ir->op1, RSET_GPR);
-  RegSet allow = rset_exclude(RSET_GPR, dest);
+  RegSet allow = rset_exclude(rset_exclude(RSET_GPR, dest), left);
   if (as->flags & JIT_F_RVZbb) {
     if (!irt_is64(ir->t))
       emit_dsshamt(as, RISCVI_SRAI, dest, dest, 32);
