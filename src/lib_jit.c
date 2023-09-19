@@ -631,7 +631,7 @@ JIT_PARAMDEF(JIT_PARAMINIT)
 #include <sys/utsname.h>
 #endif
 
-#if LJ_TARGET_RISCV64
+#if LJ_TARGET_RISCV64 && LJ_TARGET_POSIX
 #include <setjmp.h>
 #include <signal.h>
 static sigjmp_buf sigbuf = {0};
@@ -642,11 +642,11 @@ static void detect_sigill(int sig)
 
 static int riscv_compressed()
 {
-#if defined(__riscv_compressed)
-  // Don't bother checking for RVC -- would crash before getting here.
+#if defined(__riscv_c) || defined(__riscv_compressed)
+  /* Don't bother checking for RVC -- would crash before getting here. */
   return 1;
 #elif defined(__GNUC__)
-  // c.nop; c.nop;
+  /* c.nop; c.nop; */
   __asm__(".4byte 0x00010001");
   return 1;
 #else
@@ -656,9 +656,12 @@ static int riscv_compressed()
 
 static int riscv_zba()
 {
-#if defined(__GNUC__)
-  // Don't bother verifying the result, just check if the instruction exists.
-  // add.uw zero, zero, zero
+#if defined(__riscv_b) || defined(__riscv_zba)
+  /* Don't bother checking for Zba -- would crash before getting here. */
+  return 1;
+#elif defined(__GNUC__)
+  /* Don't bother verifying the result, just check if the instruction exists. */
+  /* add.uw zero, zero, zero */
   __asm__(".4byte 0x0800003b");
   return 1;
 #else
@@ -668,9 +671,12 @@ static int riscv_zba()
 
 static int riscv_zbb()
 {
-#if defined(__GNUC__)
+#if defined(__riscv_b) || defined(__riscv_zbb)
+  /* Don't bother checking for Zbb -- would crash before getting here. */
+  return 1;
+#elif defined(__GNUC__)
   register int t asm ("a0");
-  // addi a0, zero, 255; sext.b a0, a0;
+  /* addi a0, zero, 255; sext.b a0, a0; */
   __asm__("addi a0, zero, 255\n\t.4byte 0x60451513");
   return t < 0;
 #else
@@ -682,11 +688,11 @@ static int riscv_xthead()
 {
 #if defined(__GNUC__)
     register int t asm ("a0");
-    // C906 & C910 & C908 all have "xtheadc", XTheadBb subset "xtheadc".
-    // Therefore assume XThead* are present if XTheadBb is present.
-    // addi a0, zero, 255; th.ext a0, a0, 7, 0;
+    /* C906 & C910 & C908 all have "xtheadc", XTheadBb subset "xtheadc". */
+    /* Therefore assume XThead* are present if XTheadBb is present. */
+    /* addi a0, zero, 255; th.ext a0, a0, 7, 0; */
     __asm__("addi a0, zero, 255\n\t.4byte 0x1c05250b");
-    return t == -1;		// In case of collision with other vendor extensions.
+    return t == -1;		/* In case of collision with other vendor extensions. */
 #else
     return 0;
 #endif
@@ -773,7 +779,7 @@ static uint32_t jit_cpudetect(void)
 
 #elif LJ_TARGET_RISCV64
 #if LJ_HASJIT
-  // SIGILL-based detection of RVC, Zba, Zbb and XThead. Welcome to the future.
+  /* SIGILL-based detection of RVC, Zba, Zbb and XThead. Welcome to the future. */
   struct sigaction old = {0}, act = {0};
   act.sa_handler = detect_sigill;
   sigaction(SIGILL, &act, &old);
@@ -783,8 +789,8 @@ static uint32_t jit_cpudetect(void)
   flags |= riscv_probe(riscv_xthead, JIT_F_RVXThead);
   sigaction(SIGILL, &old, NULL);
 
-  // Detect V/P?
-  // V have no hardware available, P not ratified yet.
+  /* Detect V/P? */
+  /* V have no hardware available, P not ratified yet. */
 #endif
 
 #else
