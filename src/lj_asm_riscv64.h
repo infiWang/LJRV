@@ -1325,8 +1325,7 @@ static void asm_arithov(ASMState *as, IRIns *ir)
     if (ir->o == IR_SUBOV) k = (int)(~(unsigned int)k+1u);
     if (checki12(k)) {	/* (dest < left) == (k >= 0 ? 1 : 0) */
       left = ra_alloc1(as, ir->op1, RSET_GPR);
-      asm_guard(as, k >= 0 ? RISCVI_BNE : RISCVI_BEQ, RID_TMP, RID_ZERO);
-      emit_ds1s2(as, RISCVI_SLT, RID_TMP, dest, dest == left ? RID_TMP : left);
+      asm_guard(as, k >= 0 ? RISCVI_BLT : RISCVI_BGE, dest, dest == left ? RID_TMP : left);
       emit_dsi(as, RISCVI_ADDI, dest, left, k);
       if (dest == left) emit_mv(as, RID_TMP, left);
       return;
