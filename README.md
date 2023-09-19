@@ -24,7 +24,7 @@ Please report bugs to [Issues](https://github.com/ruyisdk/LuaJIT/issues).
 
 ## Copyright
 
-LuaJIT is Copyright (C) 2005-2022 Mike Pall.
+LuaJIT is Copyright (C) 2005-2023 Mike Pall.
 LuaJIT is free software, released under the MIT license.
 See full Copyright Notice in the COPYRIGHT file or in luajit.h.
 

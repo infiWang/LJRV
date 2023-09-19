@@ -1,8 +1,8 @@
 |// Low-level VM code for RISC-V 64 CPUs.
 |// Bytecode interpreter, fast functions and helper functions.
-|// Copyright (C) 2005-2022 Mike Pall. See Copyright Notice in luajit.h
+|// Copyright (C) 2005-2023 Mike Pall. See Copyright Notice in luajit.h
 |//
-|// Contributed by Raymond Wong from PLCT Lab, ISCAS.
+|// Contributed by gns from PLCT Lab, ISCAS.
 |// Sponsored by PLCT Lab, ISCAS.
 |
 |.arch riscv64
@@ -2678,7 +2678,6 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv TMP2, sp
   |  sub sp, sp, TMP1
   |  sd ra, -8(TMP2)
-  |  slliw CARG2, CARG2, 3
   |  sd x18, -16(TMP2)
   |  sd CCSTATE, -24(TMP2)
   |  mv x18, TMP2
