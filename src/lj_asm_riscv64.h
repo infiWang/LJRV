@@ -1550,10 +1550,12 @@ static void asm_min_max(ASMState *as, IRIns *ir, int ismax)
       } else {
   emit_ds1s2(as, RISCVI_OR, dest, dest, RID_TMP);
   if (dest != right) {
-    emit_andn(as, RID_TMP, right, RID_TMP, RID_TMP);
+    emit_ds1s2(as, RISCVI_AND, RID_TMP, right, RID_TMP);
+    emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
     emit_ds1s2(as, RISCVI_AND, dest, left, RID_TMP);
   } else {
-    emit_andn(as, RID_TMP, left, RID_TMP, RID_TMP);
+    emit_ds1s2(as, RISCVI_AND, RID_TMP, left, RID_TMP);
+    emit_ds(as, RISCVI_NOT, RID_TMP, RID_TMP);
     emit_ds1s2(as, RISCVI_AND, dest, right, RID_TMP);
   }
   emit_dsi(as, RISCVI_ADDI, RID_TMP, RID_TMP, -1);
