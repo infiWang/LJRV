@@ -1235,9 +1235,8 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |.ffunc_1 type
   |  gettp TMP0, CARG1
-  |  sltu TMP2, TISNUM, TMP0
   |  not TMP3, TMP0
-  |  bnez TMP2, >1
+  |  bltu TISNUM, TMP0, >1
   |  li TMP3, ~LJ_TISNUM
   |1:
   |  slli TMP3, TMP3, 3
