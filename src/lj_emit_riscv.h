@@ -99,7 +99,8 @@ static void emit_lso(ASMState *as, RISCVIns riscvi, Reg data, Reg base, int32_t 
   }
 }
 
-static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t shamt)
+static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg tmp,
+                       int32_t shamt)
 {
   if (as->flags & JIT_F_RVZbb || as->flags & JIT_F_RVXThead) {
     if (as->flags & JIT_F_RVXThead) switch (riscvi) {
@@ -124,13 +125,13 @@ static void emit_roti(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, int32_t sh
         lj_assertA(0, "invalid roti op");
         return;
     }
-    emit_ds1s2(as, RISCVI_OR, rd, rd, RID_TMP);
+    emit_ds1s2(as, RISCVI_OR, rd, rd, tmp);
     emit_dsshamt(as, bi, rd, rs1, (shwid - shamt)&shmsk);
-    emit_dsshamt(as, ai, RID_TMP, rs1, shamt&shmsk);
+    emit_dsshamt(as, ai, tmp, rs1, shamt&shmsk);
   }
 }
 
-static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2)
+static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2, Reg tmp)
 {
   if (as->flags & JIT_F_RVZbb) {
     emit_ds1s2(as, riscvi, rd, rs1, rs2);
@@ -154,15 +155,15 @@ static void emit_rot(ASMState *as, RISCVIns riscvi, Reg rd, Reg rs1, Reg rs2)
         return;
     }
     if (rd == rs2) {
-      emit_ds1s2(as, RISCVI_OR, rd, rd, RID_TMP);
-      emit_ds1s2(as, sbi, RID_TMP, rs1, RID_TMP);
+      emit_ds1s2(as, RISCVI_OR, rd, rd, tmp);
+      emit_ds1s2(as, sbi, tmp, rs1, tmp);
       emit_ds1s2(as, sai, rd, rs1, rs2);
-      emit_ds2(as, RISCVI_NEG, RID_TMP, rs2);
+      emit_ds2(as, RISCVI_NEG, tmp, rs2);
     } else {
-      emit_ds1s2(as, RISCVI_OR, rd, rd, RID_TMP);
+      emit_ds1s2(as, RISCVI_OR, rd, rd, tmp);
       emit_ds1s2(as, sai, rd, rs1, rs2);
-      emit_ds1s2(as, sbi, RID_TMP, rs1, RID_TMP);
-      emit_ds2(as, RISCVI_NEG, RID_TMP, rs2);
+      emit_ds1s2(as, sbi, tmp, rs1, tmp);
+      emit_ds2(as, RISCVI_NEG, tmp, rs2);
     }
   }
 }
@@ -240,6 +241,7 @@ static void emit_cleartp(ASMState *as, Reg rd, Reg rs1)
   }
 }
 
+/*
 static void emit_andn(ASMState *as, Reg rd, Reg rs1, Reg rs2, Reg tmp)
 {
   if (as->flags & JIT_F_RVZbb) {
@@ -249,7 +251,9 @@ static void emit_andn(ASMState *as, Reg rd, Reg rs1, Reg rs2, Reg tmp)
     emit_ds(as, RISCVI_NOT, tmp, rs2);
   }
 }
+*/
 
+/*
 static void emit_orn(ASMState *as, Reg rd, Reg rs1, Reg rs2, Reg tmp)
 {
   if (as->flags & JIT_F_RVZbb) {
@@ -259,6 +263,7 @@ static void emit_orn(ASMState *as, Reg rd, Reg rs1, Reg rs2, Reg tmp)
     emit_ds(as, RISCVI_NOT, tmp, rs2);
   }
 }
+*/
 
 static void emit_xnor(ASMState *as, Reg rd, Reg rs1, Reg rs2)
 {
@@ -270,7 +275,7 @@ static void emit_xnor(ASMState *as, Reg rd, Reg rs1, Reg rs2)
   }
 }
 
-static void emit_shxadd(ASMState *as, Reg rd, Reg rs1, Reg rs2, unsigned int shamt)
+static void emit_shxadd(ASMState *as, Reg rd, Reg rs1, Reg rs2, Reg tmp, unsigned int shamt)
 {
   if (as->flags & JIT_F_RVZba) {
     switch (shamt) {
@@ -282,14 +287,14 @@ static void emit_shxadd(ASMState *as, Reg rd, Reg rs1, Reg rs2, unsigned int sha
   } else if (as->flags & JIT_F_RVXThead) {
     emit_dsi(as, RISCVI_TH_ADDSL|RISCVF_IMMI(shamt<<5), rd, rs1, rs2);
   } else {
-    emit_ds1s2(as, RISCVI_ADD, rd, rs1, RID_TMP);
-    emit_dsshamt(as, RISCVI_SLLI, RID_TMP, rs2, 3);
+    emit_ds1s2(as, RISCVI_ADD, rd, rs1, tmp);
+    emit_dsshamt(as, RISCVI_SLLI, tmp, rs2, shamt);
   }
 }
 
-#define emit_sh1add(as, rd, rs1, rs2) emit_shxadd(as, rd, rs1, rs2, 1)
-#define emit_sh2add(as, rd, rs1, rs2) emit_shxadd(as, rd, rs1, rs2, 2)
-#define emit_sh3add(as, rd, rs1, rs2) emit_shxadd(as, rd, rs1, rs2, 3)
+#define emit_sh1add(as, rd, rs1, rs2, tmp) emit_shxadd(as, rd, rs1, rs2, tmp, 1)
+#define emit_sh2add(as, rd, rs1, rs2, tmp) emit_shxadd(as, rd, rs1, rs2, tmp, 2)
+#define emit_sh3add(as, rd, rs1, rs2, tmp) emit_shxadd(as, rd, rs1, rs2, tmp, 3)
 
 static void emit_loadk12(ASMState *as, Reg rd, int32_t i)
 {
@@ -471,7 +476,7 @@ static void emit_movrr(ASMState *as, IRIns *ir, Reg dst, Reg src)
 
 /* Emit an arithmetic operation with a constant operand. */
 static void emit_opk(ASMState *as, RISCVIns riscvi, Reg dest, Reg src,
-         intptr_t k)
+         Reg tmp, intptr_t k)
 {
   if (checki12(k)) emit_dsi(as, riscvi, dest, src, k);
   else {
@@ -482,8 +487,8 @@ static void emit_opk(ASMState *as, RISCVIns riscvi, Reg dest, Reg src,
       case RISCVI_ANDI: riscvi = RISCVI_AND; break;
       default: lj_assertA(0, "NYI arithmetic RISCVIns"); return;
     }
-    emit_ds1s2(as, riscvi, dest, src, RID_TMP);
-    emit_loadu64(as, RID_TMP, (uintptr_t)k);
+    emit_ds1s2(as, riscvi, dest, src, tmp);
+    emit_loadu64(as, tmp, (uintptr_t)k);
   }
 }
 
@@ -509,7 +514,7 @@ static void emit_storeofs(ASMState *as, IRIns *ir, Reg r, Reg base, int32_t ofs)
 static void emit_addptr(ASMState *as, Reg r, int32_t ofs)
 {
   if (ofs)
-    emit_opk(as, RISCVI_ADDI, r, r, ofs);
+    emit_opk(as, RISCVI_ADDI, r, r, RID_TMP, ofs);
 }
 
 
