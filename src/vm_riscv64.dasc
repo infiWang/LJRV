@@ -4591,6 +4591,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   settp LFUNC:RB, TMP0
     |  add TMP0, RA, RC
     |   sd LFUNC:RB, 0(TMP1)		// Store (tagged) copy of LFUNC.
+    |  addi TMP2, TMP2, -8
     |   addi TMP3, RC, 16+FRAME_VARG
     |    ld KBASE, -4+PC2PROTO(k)(PC)
     |   sd TMP3, 8(TMP1)                // Store delta + FRAME_VARG.
