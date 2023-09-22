@@ -1627,8 +1627,7 @@ static void asm_intcomp(ASMState *as, IRIns *ir)
     }
   }
   right = ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, left));
-  asm_guard(as, ((op^(op>>1))&1) ? (op&4) ? RISCVI_BLTU : RISCVI_BLT
-                                 : (op&4) ? RISCVI_BGEU : RISCVI_BGE,
+  asm_guard(as, ((op&4) ? RISCVI_BGEU : RISCVI_BGE) ^ RISCVF_FUNCT3((op^(op>>1))&1),
              (op&2) ? right : left, (op&2) ? left : right);
 }
 
