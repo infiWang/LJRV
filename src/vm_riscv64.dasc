@@ -4742,6 +4742,7 @@ static void emit_asm_debug(BuildCtx *ctx)
 	"\t.4byte %d\n"
 	"\t.byte 0x81\n\t.uleb128 2*1\n"	/* offset ra */
 	"\t.byte 0x92\n\t.uleb128 2*2\n"	/* offset x18 */
+	"\t.byte 0xd\n\t.uleb128 0x12\n"
 	"\t.align 3\n"
 	".LEFDE1:\n\n", (int)ctx->codesz - fcofs);
 #endif
@@ -4813,6 +4814,7 @@ static void emit_asm_debug(BuildCtx *ctx)
 	"\t.uleb128 0\n"			/* augmentation length */
 	"\t.byte 0x81\n\t.uleb128 2*1\n"	/* offset ra */
 	"\t.byte 0x92\n\t.uleb128 2*2\n"	/* offset x18 */
+	"\t.byte 0xd\n\t.uleb128 0x12\n"
 	"\t.align 2\n"
 	".LEFDE3:\n\n", (int)ctx->codesz - fcofs);
 #endif
