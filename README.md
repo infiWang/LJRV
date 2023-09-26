@@ -11,7 +11,6 @@ The ultimate goal is to provide a RISC-V 64 LuaJIT implementation and have it up
 ## Progress
 
 - [x] Interpreter Runtime
-  - except unwinding
 - [x] JIT Compiler
   - table reference might be broken
 
