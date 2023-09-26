@@ -429,19 +429,19 @@
 |.endmacro
 |
 |// Assumes J is relative to GL. Some J members might be out of range though.
-#define GG_G2GOT		(GG_OFS(got) - GG_OFS(g))
 #define GL_J(field)	(GG_G2J + (int)offsetof(jit_State, field))
-#define GL_GOT(name)	(GG_G2GOT + sizeof(void*)*LJ_GOT_##name)
 |
 #define PC2PROTO(field)  ((int)offsetof(GCproto, field)-(int)sizeof(GCproto))
 |
-|.macro load_got, func
-|  ld CFUNCADDR, GL_GOT(func)(GL)
+|.macro call_intern, curfunc, func
+|->curfunc .. _pcrel_ .. func:
+|  auipc CFUNCADDR, extern %pcrel_hi(func)
+|  jalr CFUNCADDR, extern %pcrel_lo(lj_ .. curfunc .. _pcrel_ .. func)
 |.endmacro
-|// JAL should be enough for *most* internal jumps.
-|.macro call_intern, func; jalr CFUNCADDR; .endmacro
-|.macro call_extern; jalr CFUNCADDR; .endmacro
-|.macro jmp_extern; jr CFUNCADDR; .endmacro
+|.macro call_extern, func
+|  call extern func
+|  empty
+|.endmacro
 |
 |// Set current VM state. Uses TMP0.
 |.macro li_vmstate, st; li TMP0, ~LJ_VMST_..st; .endmacro
@@ -624,7 +624,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   mv MULTRES, RD
   |  srliw CARG2, TMP2, 3
   |  mv CARG1, L
-  |  jal extern lj_state_growstack       // (lua_State *L, int n)
+  |  call_intern vm_leave_unw, lj_state_growstack		// (lua_State *L, int n)
   |    lw TMP2, SAVE_NRES(sp)
   |  ld BASE, L->top			// Need the (realloced) L->top in BASE.
   |   mv RD, MULTRES
@@ -685,7 +685,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  // L->base = new base, L->top = top
   |  sd PC, SAVE_PC(sp)
   |  mv CARG1, L
-  |  jal extern lj_state_growstack	// (lua_State *L, int n)
+  |  call_intern vm_growstack_l, lj_state_growstack	// (lua_State *L, int n)
   |  ld BASE, L->base
   |  ld RC, L->top
   |  ld LFUNC:RB, FRAME_FUNC(BASE)
@@ -889,7 +889,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd BASE, L->base
   |  mv CARG1, L
   |  sd PC, SAVE_PC(sp)
-  |  jal extern lj_meta_tget		// (lua_State *L, TValue *o, TValue *k)
+  |  // (lua_State *L, TValue *o, TValue *k)
+  |  call_intern vmeta_tgetv, lj_meta_tget
   |  // Returns TValue * (finished) or NULL (metamethod).
   |  beqz CRET1, >3
   |  ld TMP0, 0(CRET1)
@@ -909,7 +910,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  j ->vm_call_dispatch_f
   |
   |->vmeta_tgetr:
-  |  jal extern lj_tab_getinth		// (GCtab *t, int32_t key)
+  |  call_intern vmeta_tgetr, lj_tab_getinth	// (GCtab *t, int32_t key)
   |  // Returns cTValue * or NULL.
   |  mv TMP1, TISNIL
   |  bxeqz CRET1, ->BC_TGETR_Z
@@ -946,7 +947,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd BASE, L->base
   |  mv CARG1, L
   |  sd PC, SAVE_PC(sp)
-  |  jal extern lj_meta_tset		// (lua_State *L, TValue *o, TValue *k)
+  |  // (lua_State *L, TValue *o, TValue *k)
+  |  call_intern vmeta_tsetv, lj_meta_tset
   |  // Returns TValue * (finished) or NULL (metamethod).
   |  ld TMP2, 0(RA)
   |  beqz CRET1, >3
@@ -971,7 +973,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd BASE, L->base
   |  mv CARG1, L
   |  sd PC, SAVE_PC(sp)
-  |  jal extern lj_tab_setinth	// (lua_State *L, GCtab *t, int32_t key)
+  |  // (lua_State *L, GCtab *t, int32_t key)
+  |  call_intern vmeta_tsetr, lj_tab_setinth
   |  // Returns TValue *.
   |  j ->BC_TSETR_Z
   |
@@ -986,7 +989,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CARG1, L
   |  decode_OP1 CARG4, INS
   |  sd PC, SAVE_PC(sp)
-  |  jal extern lj_meta_comp	// (lua_State *L, TValue *o1, *o2, int op)
+  |  // (lua_State *L, TValue *o1, *o2, int op)
+  |  call_intern vmeta_comp, lj_meta_comp
   |  // Returns 0/1 or TValue * (metamethod).
   |3:
   |  sltiu TMP1, CRET1, 2
@@ -1034,7 +1038,8 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd BASE, L->base
   |   mv CARG1, L
   |   sd PC, SAVE_PC(sp)
-  |  jal extern lj_meta_equal		// (lua_State *L, GCobj *o1, *o2, int ne)
+  |  // (lua_State *L, GCobj *o1, *o2, int ne)
+  |  call_intern vmeta_equal, lj_meta_equal
   |  // Returns 0/1 or TValue * (metamethod).
   |  j <3
   |
@@ -1045,7 +1050,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CARG2, INS
   |  sd BASE, L->base
   |  sd PC, SAVE_PC(sp)
-  |  jal extern lj_meta_equal_cd		// (lua_State *L, BCIns op)
+  |  call_intern vmeta_equal_cd, lj_meta_equal_cd	// (lua_State *L, BCIns op)
   |  // Returns 0/1 or TValue * (metamethod).
   |  j <3
   |.endif
@@ -1057,7 +1062,8 @@ static void build_subroutines(BuildCtx *ctx)
   |   srliw CARG2, RA, 3
   |   srliw CARG3, RD, 3
   |  sd PC, SAVE_PC(sp)
-  |  jal extern lj_meta_istype		// (lua_State *L, BCReg ra, BCReg tp)
+  |  // (lua_State *L, TValue *o, BCReg tp)
+  |  call_intern vmeta_istype, lj_meta_istype
   |  j ->cont_nop
   |
   |//-- Arithmetic metamethods ---------------------------------------------
@@ -1073,7 +1079,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CARG3, RB
   |  mv CARG4, RC
   |  decode_OP1 CARG5, INS
-  |  jal extern lj_meta_arith		// (lua_State *L, TValue *ra,*rb,*rc, BCReg op)
+  |  // (lua_State *L, TValue *ra,*rb,*rc, BCReg op)
+  |  call_intern vmeta_arith, lj_meta_arith
   |  // Returns NULL (finished) or TValue * (metamethod).
   |  bxeqz CRET1, ->cont_nop
   |
@@ -1096,7 +1103,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd BASE, L->base
   |   mv CARG1, L
   |   sd PC, SAVE_PC(sp)
-  |  jal extern lj_meta_len		// (lua_State *L, TValue *o)
+  |  call_intern vmeta_len, lj_meta_len	// (lua_State *L, TValue *o)
   |  // Returns NULL (retry) or TValue * (metamethod base).
 #if LJ_52
   |  bxnez CRET1, ->vmeta_binop		// Binop call for compatibility.
@@ -1116,7 +1123,8 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd PC, SAVE_PC(sp)
   |  add CARG3, BASE, RC
   |   mv MULTRES, NARGS8:RC
-  |  jal extern lj_meta_call		// (lua_State *L, TValue *func, TValue *top)
+  |  // (lua_State *L, TValue *func, TValue *top)
+  |  call_intern vmeta_call, lj_meta_call
   |  ld LFUNC:RB, FRAME_FUNC(BASE)	// Guaranteed to be a function here.
   |   addi NARGS8:RC, MULTRES, 8	// Got one more argument now.
   |  cleartp LFUNC:RB
@@ -1130,7 +1138,8 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd PC, SAVE_PC(sp)
   |  add CARG3, RA, RC
   |   mv MULTRES, NARGS8:RC
-  |  jal extern lj_meta_call		// (lua_State *L, TValue *func, TValue *top)
+  |  // (lua_State *L, TValue *func, TValue *top)
+  |  call_intern vmeta_callt, lj_meta_call
   |   ld RB, FRAME_FUNC(RA)		// Guaranteed to be a function here.
   |  ld TMP1, FRAME_PC(BASE)
   |  addi NARGS8:RC, MULTRES, 8	// Got one more argument now.
@@ -1145,7 +1154,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CARG2, RA
   |   sd PC, SAVE_PC(sp)
   |  mv MULTRES, INS
-  |  jal extern lj_meta_for	// (lua_State *L, TValue *base)
+  |  call_intern vmeta_for, lj_meta_for	// (lua_State *L, TValue *base)
   |.if JIT
   |  decode_OP1 TMP0, MULTRES
   |  li TMP1, BC_JFORI
@@ -1323,7 +1332,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi CARG3, BASE, 8
   |  bxnez TMP0, ->fff_fallback
   |  mv CARG1, L
-  |  jal extern lj_tab_get	// (lua_State *L, GCtab *t, cTValue *key)
+  |  call_intern ff_rawget, lj_tab_get	// (lua_State *L, GCtab *t, cTValue *key)
   |  // Returns cTValue *.
   |  ld CARG1, 0(CRET1)
   |  j ->fff_restv
@@ -1356,7 +1365,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  ffgccheck
   |  mv CARG1, L
   |  mv CARG2, BASE
-  |  jal extern lj_strfmt_number	// (lua_State *L, cTValue *o)
+  |  call_intern ff_tostring, lj_strfmt_number	// (lua_State *L, cTValue *o)
   |  // Returns GCstr *.
   |  li TMP1, LJ_TSTR
   |//  ld BASE, L->base
@@ -1372,7 +1381,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd TISNIL, 0(TMP0)		// Set missing 2nd arg to nil.
   |  addi CARG2, BASE, 8
   |  addi CARG3, BASE, -16
-  |  jal extern lj_tab_next		// (GCtab *t, cTValue *key, TValue *o)
+  |  call_intern ff_next, lj_tab_next	// (GCtab *t, cTValue *key, TValue *o)
   |  // Returns 1=found, 0=end, -1=error.
   |//  addi RA, BASE, -16
   |  li RD, (2+1)*8
@@ -1431,7 +1440,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  li RD, (0+1)*8
   |  bxeqz TMP0, ->fff_res
   |  mv CARG2, TMP2
-  |  jal extern lj_tab_getinth		// (GCtab *t, int32_t key)
+  |  call_intern ff_ipairs_aux, lj_tab_getinth	// (GCtab *t, int32_t key)
   |  // Returns cTValue * or NULL.
   |  li RD, (0+1)*8
   |  bxeqz CRET1, ->fff_res
@@ -1611,13 +1620,19 @@ static void build_subroutines(BuildCtx *ctx)
   |.else
   |  mv CARG1, L
   |  mv CARG2, L:RA
-  |  jal extern lj_ffh_coroutine_wrap_err  // (lua_State *L, lua_State *co)
+  |  // (lua_State *L, lua_State *co)
+  |  call_intern ff_coroutine_wrap_aux, lj_ffh_coroutine_wrap_err
   |.endif
   |
   |9:  // Handle stack expansion on return from yield.
   |  mv CARG1, L
   |  srliw CARG2, RD, 3
-  |  jal extern lj_state_growstack	// (lua_State *L, int n)
+  |  // (lua_State *L, int n)
+  |.if resume
+  |  call_intern ff_coroutine_resume, lj_state_growstack
+  |.else
+  |  call_intern ff_coroutine_wrap_aux, lj_state_growstack
+  |.endif
   |  mv CRET1, x0
   |  j <4
   |.endmacro
@@ -1707,15 +1722,13 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |.macro math_extern, func
   |  .ffunc_n math_ .. func
-  |  load_got func
-  |  call_extern
+  |  call_extern func
   |  j ->fff_resn
   |.endmacro
   |
   |.macro math_extern2, func
   |  .ffunc_nn math_ .. func
-  |  load_got func
-  |  call_extern
+  |  call_extern func
   |  j ->fff_resn
   |.endmacro
   |
@@ -1731,9 +1744,8 @@ static void build_subroutines(BuildCtx *ctx)
   |   ld CARG1, 0(BASE)
   |   fld FARG1, 0(BASE)
   |  bxne NARGS8:RC, TMP1, ->fff_fallback		// Need exactly 1 argument.
-  |  load_got log
   |  checknum CARG1, ->fff_fallback
-  |  call_extern
+  |  call_extern log
   |  j ->fff_resn
   |
   |  math_extern log10
@@ -1754,17 +1766,15 @@ static void build_subroutines(BuildCtx *ctx)
   |.ffunc_2 math_ldexp
   |  checknum CARG1, ->fff_fallback
   |  checkint CARG2, ->fff_fallback
-  |  load_got ldexp			// (double x, int exp)
   |   fld FARG1, 0(BASE)
   |   lw CARG1, 8(BASE)
-  |  call_extern
+  |  call_extern ldexp			// (double x, int exp)
   |  j ->fff_resn
   |
   |.ffunc_n math_frexp
-  |  load_got frexp
   |   ld PC, FRAME_PC(BASE)
   |  addi CARG1, GL, offsetof(global_State, tmptv)
-  |  call_extern
+  |  call_extern frexp
   |    lw TMP1, GL->tmptv
   |   fcvt.d.w FARG2, TMP1
   |  fsd FRET1, -16(BASE)
@@ -1773,10 +1783,9 @@ static void build_subroutines(BuildCtx *ctx)
   |  j ->fff_res
   |
   |.ffunc_n math_modf
-  |  load_got modf
   |   addi CARG1, BASE, -16
   |   ld PC, FRAME_PC(BASE)
-  |  call_extern
+  |  call_extern modf
   |  fsd FRET1, -8(BASE)
   |   li RD, (2+1)*8
   |  j ->fff_res
@@ -1872,7 +1881,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd BASE, L->base
   |  sd PC, SAVE_PC(sp)
   |  mv CARG1, L
-  |  jal extern lj_str_new		// (lua_State *L, char *str, size_t l)
+  |  // (lua_State *L, const char *str, size_t l)
+  |  call_intern fff_newstr, lj_str_new
   |  // Returns GCstr *.
   |  ld BASE, L->base
   |->fff_resstr:
@@ -1939,9 +1949,9 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd BASE, L->base
   |  sd TMP0, SBUF:CARG1->w
   |   sd PC, SAVE_PC(sp)
-  |  jal extern lj_buf_putstr_ .. name
+  |  call_intern ff_string_ .. name, lj_buf_putstr_ .. name
   |//  mv SBUF:CARG1, SBUF:CRET1
-  |  jal extern lj_buf_tostr
+  |  call_intern ff_string_ .. name, lj_buf_tostr
   |   ld BASE, L->base
   |  j ->fff_resstr
   |.endmacro
@@ -2111,7 +2121,7 @@ static void build_subroutines(BuildCtx *ctx)
   |5:  // Grow stack for fallback handler.
   |  li CARG2, LUA_MINSTACK
   |   mv CARG1, L
-  |  jal extern lj_state_growstack	// (lua_State *L, int n)
+  |  call_intern vm_call_tail, lj_state_growstack	// (lua_State *L, int n)
   |  ld BASE, L->base
   |   mv CRET1, x0		// Set zero-flag to force retry.
   |  j <1
@@ -2124,7 +2134,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd PC, SAVE_PC(sp)		// Redundant (but a defined value).
   |   mv CARG1, L
   |  sd TMP0, L->top
-  |  jal extern lj_gc_step		// (lua_State *L)
+  |  call_intern fff_gc_step, lj_gc_step	// (lua_State *L)
   |   ld BASE, L->base
   |//  mv ra, MULTRES
   |    ld TMP0, L->top
@@ -2179,7 +2189,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   sd BASE, L->base
   |   mv CARG1, L
   |  // SAVE_PC must hold the _previous_ PC. The callee updates it with PC.
-  |  jal extern lj_dispatch_ins	// (lua_State *L, const BCIns *pc)
+  |  call_intern vm_inshook, lj_dispatch_ins	// (lua_State *L, const BCIns *pc)
   |3:
   |  ld BASE, L->base
   |4:  // Re-dispatch to static ins.
@@ -2211,7 +2221,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  slli TMP1, TMP1, 3
   |  add TMP1, BASE, TMP1
   |  sd TMP1, L->top
-  |  jal extern lj_trace_hot		// (jit_State *J, const BCIns *pc)
+  |  call_intern vm_hotloop, lj_trace_hot	// (jit_State *J, const BCIns *pc)
   |  j <3
   |.endif
   |
@@ -2233,7 +2243,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sub RA, RA, BASE
   |  sd TMP0, L->top
   |  mv CARG1, L
-  |  jal extern lj_dispatch_call		// (lua_State *L, const BCIns *pc)
+  |  call_intern vm_hotcall, lj_dispatch_call	// (lua_State *L, const BCIns *pc)
   |  // Returns ASMFunction.
   |  ld BASE, L->base
   |  ld TMP0, L->top
@@ -2284,7 +2294,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd L, (offsetof(jit_State, L)-2047)(CARG2)
   |  sd BASE, L->base
   |  mv CARG2, PC
-  |  jal extern lj_dispatch_stitch	// (jit_State *J, const BCIns *pc)
+  |  // (jit_State *J, const BCIns *pc)
+  |  call_intern cont_stitch, lj_dispatch_stitch
   |  ld BASE, L->base
   |  j ->cont_nop
   |
@@ -2300,7 +2311,8 @@ static void build_subroutines(BuildCtx *ctx)
   |  mv CARG2, PC
   |   sd BASE, L->base
   |   sw MULTRES, TMPD(sp)
-  |  jal extern lj_dispatch_profile	// (lua_State *L, const BCIns *pc)
+  |  // (lua_State *L, const BCIns *pc)
+  |  call_intern vm_profhook, lj_dispatch_profile
   |  // HOOK_PROFILE is off again, so re-dispatch to dynamic instruction.
   |  addi PC, PC, -4
   |   ld BASE, L->base
@@ -2362,7 +2374,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sw TMP1, (offsetof(jit_State, exitno)-2047)(CARG2)	// Store exit number.
   |  sd x0, GL->jit_base
   |  mv CARG2, sp
-  |  jal extern lj_trace_exit		// (jit_State *J, ExitState *ex)
+  |  call_intern vm_exit_handler, lj_trace_exit	// (jit_State *J, ExitState *ex)
   |  // Returns MULTRES (unscaled) or negated error code.
   |  ld TMP1, L->cframe
   |  ld BASE, L->base
@@ -2447,7 +2459,7 @@ static void build_subroutines(BuildCtx *ctx)
   |9:  // Rethrow error from the right C frame.
   |  negw CARG2, CRET1
   |  mv CARG1, L
-  |  jal extern lj_err_trace		// (lua_State *L, int errcode)
+  |  call_intern vm_exit_interp, lj_err_trace	// (lua_State *L, int errcode)
   |.endif
   |
   |//-----------------------------------------------------------------------
@@ -2611,7 +2623,6 @@ static void build_subroutines(BuildCtx *ctx)
   |  addxi DISPATCH, x7, GG_G2DISP
   |  srli x5, x5, 12
   |  sw x5, CTSTATE->cb.slot
-  |  load_got lj_ccallback_enter
   |  sd CARG1, CTSTATE->cb.gpr[0]
   |  fsd FARG1, CTSTATE->cb.fpr[0]
   |  sd CARG2, CTSTATE->cb.gpr[1]
@@ -2633,7 +2644,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd x0, SAVE_PC(sp)			// Any value outside of bytecode is ok.
   |  mv CARG1, CTSTATE
   |  mv CARG2, sp
-  |  call_intern lj_ccallback_enter	// (CTState *cts, void *cf)
+  |  call_intern vm_ffi_callback, lj_ccallback_enter	// (CTState *cts, void *cf)
   |  // Returns lua_State *.
   |  ld BASE, L:CRET1->base
   |  ld RC, L:CRET1->top
@@ -2653,14 +2664,14 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |->cont_ffi_callback:				// Return from FFI callback.
   |.if FFI
-  |  load_got lj_ccallback_leave
   |  ld CTSTATE, GL->ctype_state
   |  sd BASE, L->base
   |  sd RB, L->top
   |  sd L, CTSTATE->L
   |  mv CARG1, CTSTATE
   |  mv CARG2, RA
-  |  call_intern lj_ccallback_leave	// (CTState *cts, TValue *o)
+  |  // (CTState *cts, TValue *o)
+  |  call_intern cont_ffi_callback, lj_ccallback_leave
   |  fld FRET1, CTSTATE->cb.fpr[0]
   |  ld CRET1, CTSTATE->cb.gpr[0]
   |  fld FRET2, CTSTATE->cb.fpr[1]
@@ -3162,7 +3173,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |3:
 #endif
     |->BC_LEN_Z:
-    |  jal extern lj_tab_len		// (GCtab *t)
+    |  call_intern BC_LEN, lj_tab_len		// (GCtab *t)
     |  // Returns uint32_t (but less than 2^31).
     |  j <1
 #if LJ_52
@@ -3274,7 +3285,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  ins_arithfp, fpins, TMP0, TMP1
     |.endmacro
     |
-    |.macro ins_arithmod, fpins
+    |.macro ins_arithmod, fpins, BC
     |  ins_arithpre
     |  ins_arithead TMP0, TMP1, CARG1, CARG2
     |  bne TMP0, TISNUM, >1
@@ -3283,7 +3294,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  sext.w CARG2, CARG2
     |  add RA, BASE, RA
     |  bxeqz CARG2, ->vmeta_arith
-    |  jal extern lj_vm_modi
+    |  call_intern BC, lj_vm_modi
     |  zext.w CRET1, CRET1
     |  settp CRET1, TISNUM
     |  sd CRET1, 0(RA)
@@ -3304,8 +3315,14 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_DIVVN: case BC_DIVNV: case BC_DIVVV:
     |  ins_arithdiv fdiv.d
     break;
-  case BC_MODVN: case BC_MODNV: case BC_MODVV:
-    |  ins_arithmod fpmod
+  case BC_MODVN:
+    |  ins_arithmod fpmod, BC_MODVN
+    break;
+  case BC_MODNV:
+    |  ins_arithmod fpmod, BC_MODNV
+    break;
+  case BC_MODVV:
+    |  ins_arithmod fpmod, BC_MODVV
     break;
   case BC_POW:
     |  ins_arithpre
@@ -3317,11 +3334,10 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   sltiu TMP1, TMP1, LJ_TISNUM
     |  and TMP0, TMP0, TMP1
     |   add RA, BASE, RA
-    |  load_got pow
     |  bxeqz TMP0, ->vmeta_arith
     |  fld FARG1, 0(RB)
     |  fld FARG2, 0(RC)
-    |  call_extern
+    |  call_extern pow
     |  ins_next1
     |  fsd FRET1, 0(RA)
     |  ins_next2
@@ -3339,7 +3355,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  srliw CARG3, CARG3, 3
     |   sd PC, SAVE_PC(sp)
     |   mv CARG1, L
-    |  jal extern lj_meta_cat		// (lua_State *L, TValue *top, int left)
+    |  call_intern BC_CAT, lj_meta_cat	// (lua_State *L, TValue *top, int left)
     |  // Returns NULL (finished) or TValue * (metamethod).
     |   ld BASE, L->base
     |  bxnez CRET1, ->vmeta_binop
@@ -3461,7 +3477,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  beqz TMP3, <1
     |  // Crossed a write barrier. Move the barrier forward.
     |  mv CARG1, GL
-    |  jal extern lj_gc_barrieruv	// (global_State *g, TValue *tv)
+    |  call_intern BC_USETV, lj_gc_barrieruv	// (global_State *g, TValue *tv)
     |  j <1
     break;
   case BC_USETS:
@@ -3490,7 +3506,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  beqz TMP0, <1
     |  // Crossed a write barrier. Move the barrier forward.
     |  mv CARG1, GL
-    |  jal extern lj_gc_barrieruv	// (global_State *g, TValue *tv)
+    |  call_intern BC_USETS, lj_gc_barrieruv	// (global_State *g, TValue *tv)
     |  j <1
     break;
   case BC_USETN:
@@ -3526,7 +3542,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   mv CARG1, L
     |  beqz TMP2, >1
     |   add CARG2, BASE, RA
-    |  jal extern lj_func_closeuv	// (lua_State *L, TValue *level)
+    |  call_intern BC_UCLO, lj_func_closeuv	// (lua_State *L, TValue *level)
     |  ld BASE, L->base
     |1:
     |  ins_next
@@ -3542,7 +3558,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  cleartp CARG3
     |   mv CARG1, L
     |  // (lua_State *L, GCproto *pt, GCfuncL *parent)
-    |  jal extern lj_func_newL_gc
+    |  call_intern BC_FNEW, lj_func_newL_gc
     |  // Returns GCfuncL *.
     |   li TMP0, LJ_TFUNC
     |  ld BASE, L->base
@@ -3575,15 +3591,15 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  not TMP4, TMP4
       |  and CARG2, CARG2, TMP4
       |  or CARG2, CARG2, TMP0
-      |  // (lua_State *L, int32_t asize, uint32_t hbits)
       |   mv CARG1, L
-      |  jal extern lj_tab_new
+      |  // (lua_State *L, int32_t asize, uint32_t hbits)
+      |  call_intern BC_TNEW, lj_tab_new
       |  // Returns Table *.
     } else {
       |  sub TMP1, KBASE, RD
       |  mv CARG1, L
-      |   ld CARG2, -8(TMP1)            // KBASE-8-str_const*8
-      |  jal extern lj_tab_dup		// (lua_State *L, Table *kt)
+      |   ld CARG2, -8(TMP1)		// KBASE-8-str_const*8
+      |  call_intern BC_TDUP, lj_tab_dup		// (lua_State *L, Table *kt)
       |  // Returns Table *.
     }
     |   li TMP0, LJ_TTAB
@@ -3596,7 +3612,11 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |5:
     |  mv MULTRES, RD
     |   mv CARG1, L
-    |  jal extern lj_gc_step_fixtop	// (lua_State *L)
+    if (op == BC_TNEW) {
+      |  call_intern BC_TNEW, lj_gc_step_fixtop	// (lua_State *L)
+    } else {
+      |  call_intern BC_TDUP, lj_gc_step_fixtop	// (lua_State *L)
+    }
     |   mv RD, MULTRES
     |  j <1
     break;
@@ -3633,7 +3653,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  bne TMP3, TISNUM, >5		// Integer key?
     |  sext.w TMP2, TMP2
     |   ld TMP1, TAB:RB->array
-    |  bxgeu TMP2, TMP0, ->vmeta_tgetv	// Integer key and in array part? (keys = [0, asize-1])
+    |  bxgeu TMP2, TMP0, ->vmeta_tgetv	// Integer key and in array part?
     |   slliw TMP2, TMP2, 3
     |   add TMP2, TMP1, TMP2
     |   ld CRET1, 0(TMP2)
@@ -3861,7 +3881,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  mv CARG2, TAB:RB
     |   sd PC, SAVE_PC(sp)
     |   mv CARG1, L
-    |  jal extern lj_tab_newkey	// (lua_State *L, GCtab *t, TValue *k
+    |  // (lua_State *L, GCtab *t, TValue *k)
+    |  call_intern BC_TSETS, lj_tab_newkey
     |  // Returns TValue *.
     |  ld BASE, L->base
     |   fsd FTMP0, 0(CRET1)
@@ -3969,7 +3990,8 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   sd PC, SAVE_PC(sp)
     |  mv BASE, RD
     |   mv CARG1, L
-    |  jal extern lj_tab_reasize		// (lua_State *L, GCtab *t, int nasize)
+    |  // (lua_State *L, GCtab *t, int nasize)
+    |  call_intern BC_TSETM, lj_tab_reasize
     |  // Must not reallocate the stack.
     |  mv RD, BASE
     |   ld BASE, L->base        // Reload BASE for lack of a saved register.
@@ -4239,7 +4261,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   sd PC, SAVE_PC(sp)
     |  srliw CARG2, TMP1, 3
     |   mv CARG1, L
-    |  jal extern lj_state_growstack	// (lua_State *L, int n)
+    |  call_intern BC_VARG, lj_state_growstack	// (lua_State *L, int n)
     |  mv RC, BASE
     |  ld BASE, L->base
     |  add RA, BASE, RA
