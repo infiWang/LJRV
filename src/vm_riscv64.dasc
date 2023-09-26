@@ -1,4 +1,3 @@
-#include "lj_frame.h"
 |// Low-level VM code for RISC-V 64 CPUs.
 |// Bytecode interpreter, fast functions and helper functions.
 |// Copyright (C) 2005-2022 Mike Pall. See Copyright Notice in luajit.h
