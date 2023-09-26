@@ -97,9 +97,15 @@ static void emit_asm_words(BuildCtx *ctx, uint8_t *p, int n)
 #if LJ_TARGET_ARM64 && LJ_BE
     ins = lj_bswap(ins);  /* ARM64 instructions are always little-endian. */
 #endif
-    if ((i & 15) == 0)
+    if ((i & 15) == 0) {
+#if LJ_TARGET_RISCV64
+      while (ins == 0xffffffffu) { i += 4; ins = *(uint32_t *)(p+i); }
+#endif
       fprintf(ctx->fp, "\t.long 0x%08x", ins);
-    else
+    } else
+#if LJ_TARGET_RISCV64
+    if (ins != 0xffffffffu)
+#endif
       fprintf(ctx->fp, ",0x%08x", ins);
     if ((i & 15) == 12) putc('\n', ctx->fp);
   }
@@ -156,9 +162,15 @@ static void emit_asm_wordreloc(BuildCtx *ctx, uint8_t *p, int n,
 	  "Error: unsupported opcode %08x for %s symbol relocation.\n",
 	  ins, sym);
   exit(1);
-#elif LJ_TARGET_RISCV32 || LJ_TARGET_RISCV64
-  if ((ins & 0x7f) == 0x6fu) {
-    fprintf(ctx->fp, "\tjal %s\n", sym);
+#elif LJ_TARGET_RISCV64
+  if (ins == 0x7fffffffu) {
+    fprintf(ctx->fp, "\tcall %s\n", sym);
+  } else if ((ins & 0x7f) == 0x17u) {
+    fprintf(ctx->fp, "\tauipc x%d, %s\n", (ins >> 7) & 31, sym);
+  } else if ((ins & 0x7f) == 0x67u) {
+    fprintf(ctx->fp, "\tjalr x%d, x%d, %s\n", (ins >> 7) & 31, (ins >> 15) & 31, sym);
+  } else if ((ins & 0x7f) == 0x6fu) {
+    fprintf(ctx->fp, "\tjal x%d, %s\n", (ins >> 7) & 31, sym);
   } else {
     fprintf(stderr,
   	    "Error: unsupported opcode %08x for %s symbol relocation.\n",

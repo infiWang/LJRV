@@ -270,17 +270,22 @@ local map_op = {}
 
 local map_op_rv32imafd = {
 
+  -- DASM pseudo-instrs
+  empty_0 = "ffffffff",
+  call_1 = "7fffffffJ",
+
   -- RV32I
   lui_2 = "00000037DU",
-  auipc_2 = "00000017DU",
+  auipc_2 = "00000017DA",
 
   jal_2  = "0000006fDJ",
-  jalr_3 = "00000067DRI",
+  jalr_3 = "00000067DRJ",
   -- pseudo-instrs
   j_1 = "0000006fJ",
   jal_1 = "000000efJ",
   jr_1 = "00000067R",
   jalr_1 = "000000e7R",
+  jalr_2 = "000000e7RJ",
 
   beq_3  = "00000063RrB",
   bne_3  = "00001063RrB",
@@ -798,6 +803,9 @@ map_op[".template__"] = function(params, template, nparams)
     elseif p == "B" or p == "J" then  -- control flow
       local mode, m, s = parse_label(params[n], false)
       if p == "B" then m = m + 2048 end
+      waction("REL_"..mode, m, s, 1); n = n + 1
+    elseif p == "A" then  -- AUIPC
+      local mode, m, s = parse_label(params[n], false)
       waction("REL_"..mode, m, s, 1); n = n + 1
     else
       assert(false)
