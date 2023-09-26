@@ -2136,12 +2136,12 @@ static void build_subroutines(BuildCtx *ctx)
   |  sd TMP0, L->top
   |  call_intern fff_gc_step, lj_gc_step	// (lua_State *L)
   |   ld BASE, L->base
-  |//  mv ra, MULTRES
+  |  mv ra, MULTRES			// Help return address predictor.
   |    ld TMP0, L->top
   |  ld CFUNC:RB, FRAME_FUNC(BASE)
   |  cleartp CFUNC:RB
   |   sub NARGS8:RC, TMP0, BASE
-  |  jr MULTRES
+  |  ret
   |
   |//-----------------------------------------------------------------------
   |//-- Special dispatch targets -------------------------------------------
