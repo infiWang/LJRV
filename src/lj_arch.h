@@ -458,7 +458,7 @@
 #define LJ_ARCH_ENDIAN		LUAJIT_LE	/* Forget about BE for now */
 #define LJ_TARGET_RISCV64	1
 #define LJ_TARGET_GC64		1
-#define LJ_TARGET_EHRETREG	0 // TODO
+#define LJ_TARGET_EHRETREG	10
 #define LJ_TARGET_EHRAREG	1
 #define LJ_TARGET_JUMPRANGE	30	/* JAL +-2^20 = +-1MB,\
         AUIPC+JALR +-2^31 = +-2GB, leave 1 bit to avoid AUIPC corner case */
@@ -466,8 +466,6 @@
 #define LJ_TARGET_MASKROT	1
 #define LJ_TARGET_UNIFYROT	2	/* Want only IR_BROR, no ROLI */
 #define LJ_ARCH_NUMMODE		LJ_NUMMODE_DUAL
-// for now
-#define LUAJIT_NO_UNWIND	1
 
 #else
 #error "No support for RISC-V 64 Soft-float/Single-float"
