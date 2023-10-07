@@ -3,8 +3,6 @@
 ** Copyright (C) 2005-2022 Mike Pall. See Copyright Notice in luajit.h
 */
 
-#include "lj_target.h"
-#include <stdint.h>
 static intptr_t get_k64val(ASMState *as, IRRef ref)
 {
   IRIns *ir = IR(ref);
