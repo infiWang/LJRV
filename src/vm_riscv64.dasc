@@ -480,11 +480,18 @@
 |.macro cleartp, dst, reg; slli dst, reg, 17; srli dst, dst, 17; .endmacro
 |
 |// Set type tag: Merge 17 type bits into bits [47, 63] of dst.
-|.macro settp, dst, tp;
-|  cleartp dst
+|.macro settp_a, dst; cleartp dst; .endmacro
+|.macro settp_a, dst, src; cleartp dst, src; .endmacro
+|.macro settp_b, dst, tp;
 |  slli x31, tp, 47
 |  or dst, dst, x31
 |.endmacro
+|.macro settp_b, dst, src, tp;
+|  slli x31, tp, 47
+|  or dst, src, x31
+|.endmacro
+|.macro settp, dst, tp; settp_a dst; settp_b dst, tp; .endmacro
+|.macro settp, dst, src, tp; settp_a dst, src; settp_b dst, dst, tp; .endmacro
 |
 |// Extract (negative) type tag.
 |.macro gettp, dst, src; srai dst, src, 47; .endmacro
@@ -1288,8 +1295,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  beq RC, TMP0, >5
   |  bnez NODE:TMP2, <3
   |4:
-  |  mv CARG1, RB
-  |  settp CARG1, TMP3
+  |  settp CARG1, RB, TMP3
   |  j ->fff_restv			// Not found, keep default result.
   |5:
   |  bxne CARG1, TISNIL, ->fff_restv
@@ -1423,7 +1429,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  sltu TMP3, TMP2, TMP0
   |    addi RA, BASE, -16
   |   zext.w TMP0, TMP2
-  |   settp TMP0, TISNUM
+  |   settp_b TMP0, TISNUM
   |  sd TMP0, 0(RA)
   |  beqz TMP3, >2			// Not in array part?
   |  slli TMP3, TMP2, 3
@@ -1813,7 +1819,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   or CARG1, CARG1, CARG2
   |  addi RA, RA, 8
   |   zext.w CARG1, CARG1
-  |   settp CARG1, TISNUM
+  |   settp_b CARG1, TISNUM
   |  j <1
   |3:  // Convert intermediate result to number and continue below.
   |   fcvt.d.w FARG1, CARG1
@@ -1858,7 +1864,7 @@ static void build_subroutines(BuildCtx *ctx)
   |   lbu TMP2, STR:CARG1[1]		// Access is always ok (NUL at end).
   |  addiw RD, RD, 1
   |  slliw RD, RD, 3			// RD = ((str->len != 0)+1)*8
-  |  settp TMP2, TISNUM
+  |  settp_b TMP2, TISNUM
   |   sd TMP2, -16(BASE)
   |  j ->fff_res
   |
@@ -3140,7 +3146,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  negw TMP0, TMP0
     |  bxeq TMP0, TMP1, ->vmeta_unm      // Meta handler deals with -2^31.
     |  zext.w TMP0, TMP0
-    |  settp TMP0, TISNUM
+    |  settp_b TMP0, TISNUM
     |  j >2
     |1:
     |  sltiu TMP3, CARG3, LJ_TISNUM
@@ -3160,9 +3166,9 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  addi TMP2, TMP1, -LJ_TSTR
     |   cleartp STR:CARG1, TMP0
     |  bnez TMP2, >2
-    |   lw CARG1, STR:CARG1->len
+    |   lwu CARG1, STR:CARG1->len
     |1:
-    |  settp CARG1, TISNUM
+    |  settp_b CARG1, TISNUM
     |  sd CARG1, 0(RA)
     |  ins_next
     |2:
@@ -3273,7 +3279,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  bxne CRET1, TMP2, ->vmeta_arith		// 63-32bit not all 0 or 1: overflow.
     |.endif
     |  zext.w CRET1, CRET1
-    |  settp CRET1, TISNUM
+    |  settp_b CRET1, TISNUM
     |  sd CRET1, 0(RA)
     |  ins_next
     |1:  // Check for two numbers.
@@ -3297,7 +3303,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  bxeqz CARG2, ->vmeta_arith
     |  call_intern BC, lj_vm_modi
     |  zext.w CRET1, CRET1
-    |  settp CRET1, TISNUM
+    |  settp_b CRET1, TISNUM
     |  sd CRET1, 0(RA)
     |  ins_next
     |1:  // Check for two numbers.
@@ -3397,7 +3403,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  add RA, BASE, RA
     |   zext.w RD, RD
     |  ins_next1
-    |   settp RD, TISNUM
+    |   settp_b RD, TISNUM
     |   sd RD, 0(RA)
     |  ins_next2
     break;
@@ -4431,7 +4437,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
       |  or CARG3, CARG3, TMP1
       |  or CARG2, CARG3, TMP3		// CARG2=1: overflow; CARG2=0: continue
       |  zext.w CARG1, CARG1
-      |  settp CARG1, TISNUM
+      |  settp_b CARG1, TISNUM
       |  sd CARG1, FORL_IDX*8(RA)
     }
     |1:
