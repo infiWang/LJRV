@@ -28,13 +28,13 @@ local lshift, rshift, arshift = bit.lshift, bit.rshift, bit.arshift
 
 local map_quad0 = {
   shift = 13, mask = 7,
-  [0] = "c.addi4spnAW", "c.fldNMh", "c.lwAMn", "c.flwNMn",
-  false, "c.fsdNMh", "c.swAMn", "c.fswNMn"
+  [0] = "c.addi4spnZW", "c.fldNMh", "c.lwZMn", "c.flwNMn",
+  false, "c.fsdNMh", "c.swZMn", "c.fswNMn"
 }
 
 local map_sub2quad1 = {
   shift = 5, mask = 3,
-  [0] = "c.subMA", "c.xorMA", "c.orMA", "c.andMA"
+  [0] = "c.subMZ", "c.xorMZ", "c.orMZ", "c.andMZ"
 }
 
 local map_sub1quad1 = {
@@ -336,7 +336,7 @@ local map_jalr = {
 
 local map_pri = {
   [3] = map_load, [7] = map_fload, [15] = map_fence, [19] = map_ali,
-  [23] = "auipcDU", [27] = map_addi_shift,
+  [23] = "auipcDA", [27] = map_addi_shift,
   [35] = map_store, [39] = map_fstore, [47] = map_aext, [51] = map_al,
   [55] = "luiDU", [59] = map_arithw_shiftw, [67] = map_fmadd, [71] = map_fmsub,
   [75] = map_fnmsub, [99] = map_branch, [79] = map_fnmadd, [83] = map_fext,
@@ -579,7 +579,7 @@ local function disass_ins(ctx)
         operands[#operands] = x
         x = temp
      end
-    elseif p == "A" then
+    elseif p == "Z" then
       x = map_gpr[8 + band(rshift(op, 2), 7)]
     elseif p == "N" then
       x = map_fgpr[8 + band(rshift(op, 2), 7)]
@@ -589,7 +589,7 @@ local function disass_ins(ctx)
       x = map_gpr[band(rshift(op, 2), 31)]
     elseif p == "W" then
       local uimm = parse_W(op)
-      x = format("%s,%d", "x2", uimm)
+      x = format("%s,%d", "sp", uimm)
     elseif p == "x" then
       x = parse_x(op)
     elseif p == "h" then
@@ -599,7 +599,7 @@ local function disass_ins(ctx)
       operands[#operands] = format("%d(%s)", uimm, last)
     elseif p == "X" then
       local imm = parse_X(op)
-      x = format("%s,%d", "x2", imm)
+      x = format("%s,%d", "sp", imm)
     elseif p == "O" then
       x = format("(%s)", map_gpr[band(rshift(op, 15), 31)])
     elseif p == "H" then
@@ -612,7 +612,15 @@ local function disass_ins(ctx)
       x = arshift(op, 20)
       --different for jalr
       if(name == "jalr") then
-        operands[#operands] = format("%d(%s)", x, last)
+        local reg = map_gpr[band(rshift(op, 15), 31)]
+        if(ctx.reltab[reg] == nil) then
+          operands[#operands] = format("%d(%s)", x, last)
+        else
+          local target = ctx.reltab[reg] + x
+          operands[#operands] = format("%d(%s) #0x%08x", x, last, target)
+          ctx.rel = target
+          ctx.reltab[reg] = nil --assume no reuses of the register
+        end
         x = nil --not to add additional operand
       end
     elseif p == "i" then
@@ -630,8 +638,14 @@ local function disass_ins(ctx)
       local uimm = bor(lshift(0, 31), lshift(part1, 6), lshift(part2, 3),
                        lshift(part3, 2))
       operands[#operands] = format("%d(%s)", uimm, last)
+    elseif p == "A" then
+      local value, dest = band(rshift(op, 12), 0xfffff), map_gpr[band(rshift(op, 7), 31)]
+      ctx.reltab[dest] = ctx.addr + ctx.pos + lshift(value, 12)
+      x = format("0x%x", value)
     elseif p == "B" then
-      x = parse_B(op)
+      x = ctx.addr + ctx.pos + parse_B(op)
+      ctx.rel = x
+      x = format("0x%08x", x)
     elseif p == "U" then
       local value = band(rshift(op, 12), 0xfffff)
       x = string.format("0x%x", value)
@@ -641,11 +655,15 @@ local function disass_ins(ctx)
       local part3 = band(rshift(op, 5), 3) --4:3
       local uimm = bor(lshift(0, 31), lshift(part1, 6), lshift(part2, 5),
                        lshift(part3, 3))
-      x = format("%d(%s)", uimm, "x2")
+      x = format("%d(%s)", uimm, "sp")
    elseif p == "q" then
-      x = parse_q(op)
+      x = ctx.addr + ctx.pos + parse_q(op)
+      ctx.rel = x
+      x = format("0x%08x", x)
     elseif p == "J" then
-      x = parse_J(op)
+      x = ctx.addr + ctx.pos + parse_J(op)
+      ctx.rel = x
+      x = format("0x%08x", x)
     elseif p == "K" then
       local value = parse_K(op)
       x = string.format("0x%x", value)
@@ -655,28 +673,30 @@ local function disass_ins(ctx)
       local part3 = band(rshift(op, 4), 7) --4:2
       local uimm = bor(lshift(0, 31), lshift(part1, 6), lshift(part2, 5),
                        lshift(part3, 2))
-      x = format("%d(%s)", uimm, "x2")
+      x = format("%d(%s)", uimm, "sp")
     elseif p == "1" then
       local part1 = band(rshift(op, 12), 1) --5
       local part2 = band(rshift(op, 2), 31) --4:0
       local uimm = bor(lshift(0, 31), lshift(part1, 5), part2)
       x = string.format("0x%x", uimm)
     elseif p == "T" then
-      x = parse_T(op)
+      x = ctx.addr + ctx.pos + parse_T(op)
+      ctx.rel = x
+      x = format("0x%08x", x)
     elseif p == "t" then
       local part1 = band(rshift(op, 7), 7) --8:6
       local part2 = band(rshift(op, 10), 7) --5:3
       local uimm = bor(lshift(0, 31), lshift(part1, 6), lshift(part2, 3))
-      x = format("%d(%s)", uimm, "x2")
+      x = format("%d(%s)", uimm, "sp")
     elseif p == "u" then
       local part1 = band(rshift(op, 7), 3) --7:6
       local part2 = band(rshift(op, 9), 15) --5:2
       local uimm = bor(lshift(0, 31), lshift(part1, 6), lshift(part2, 2))
-      x = format("%d(%s)", uimm, "x2")
+      x = format("%d(%s)", uimm, "sp")
     elseif p == "V" then
       x = map_fgpr[band(rshift(op, 2), 31)]
     elseif p == "0" then --PSEUDOINSTRUCTIONS
-      if (last == "x0" or last == 0) then
+      if (last == "zero" or last == 0) then
         local n = #operands
         operands[n] = nil
         last = operands[n-1]
@@ -704,15 +724,15 @@ local function disass_ins(ctx)
       local value = string.sub(operands[#operands], 1, 1)
       local reg = string.sub(operands[#operands], 3, #(operands[#operands]) - 1)
       if(value == "0" and
-         (operands[#operands - 1] == "x1" or operands[#operands - 1] == "x0")) then
-        if(operands[#operands - 1] == "x0") then
+         (operands[#operands - 1] == "ra" or operands[#operands - 1] == "zero")) then
+        if(operands[#operands - 1] == "zero") then
           name = altname
         end
         operands[#operands] = nil
         operands[#operands] = reg
       end
     elseif (p == "2" and alias_done == false) then
-      if (last == "x0" or last == 0) then
+      if (last == "zero" or last == 0) then
         local a1, a2 = match(altname, "([^|]*)|(.*)")
         name = a2
         operands[#operands] = nil
@@ -750,6 +770,7 @@ local function create(code, addr, out)
   ctx.get = get_le
   ctx.map_pri = map_pri
   ctx.map_compr = map_compr
+  ctx.reltab = {}
   return ctx
 end
 
