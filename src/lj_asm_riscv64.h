@@ -797,7 +797,6 @@ static void asm_hrefk(ASMState *as, IRIns *ir)
   Reg node = ra_alloc1(as, ir->op1, RSET_GPR);
   RegSet allow = rset_exclude(RSET_GPR, node);
   Reg idx = node;
-  Reg key = ra_scratch(as, allow);
   int64_t k;
   lj_assertA(ofs % sizeof(Node) == 0, "unaligned HREFK slot");
   if (bigofs) {
@@ -815,9 +814,8 @@ static void asm_hrefk(ASMState *as, IRIns *ir)
   } else {
     k = ((int64_t)irt_toitype(irkey->t) << 47) | (int64_t)ir_kgc(irkey);
   }
-  key = ra_scratch(as, allow);
-  asm_guard(as, RISCVI_BNE, key, ra_allock(as, k, allow));
-  emit_lso(as, RISCVI_LD, key, idx, kofs);
+  asm_guard(as, RISCVI_BNE, RID_TMP, ra_allock(as, k, allow));
+  emit_lso(as, RISCVI_LD, RID_TMP, idx, kofs);
   if (bigofs)
     emit_ds1s2(as, RISCVI_ADD, dest, node, ra_allock(as, ofs, allow));
 }
