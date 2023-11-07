@@ -12,7 +12,6 @@ The ultimate goal is to provide a RISC-V 64 LuaJIT implementation and have it up
 
 - [x] Interpreter Runtime
 - [x] JIT Compiler
-  - table reference might be broken
 
 LJRV is still of beta quality, particularly the JIT compiler.
 For production usage, we suggests disable the JIT compiler during compilation by setting `XCFLAGS+= -DLUAJIT_DISABLE_JIT` in Makefile or environment variable.
