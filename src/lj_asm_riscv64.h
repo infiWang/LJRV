@@ -1967,7 +1967,7 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
   lj_assertJ(checki32(delta), "jump target out of range");
   p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
   p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
-  if (!cstart) cstart = p + 2;
+  if (!cstart) cstart = p;
       }
     }
   }
