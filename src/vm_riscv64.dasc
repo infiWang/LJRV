@@ -2554,6 +2554,13 @@ static void build_subroutines(BuildCtx *ctx)
   |//-- Miscellaneous functions --------------------------------------------
   |//-----------------------------------------------------------------------
   |
+  |// void lj_vm_fence_rw_rw()
+  |->vm_fence_rw_rw:
+  |.if JIT or FFI
+  |  .long 0x0330000f
+  |  ret
+  |.endif
+  |
   |.define NEXT_TAB,            TAB:CARG1
   |.define NEXT_IDX,            CARG2
   |.define NEXT_ASIZE,          CARG3
