@@ -3111,8 +3111,9 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  lui TMP1, 0x80000
     |  gettp CARG3, TMP0
     |  bne CARG3, TISNUM, >1
-    |  negw TMP0, TMP0
+    |  sext.w TMP0, TMP0
     |  bxeq TMP0, TMP1, ->vmeta_unm      // Meta handler deals with -2^31.
+    |  negw TMP0, TMP0
     |  zext.w TMP0, TMP0
     |  settp_b TMP0, TISNUM
     |  j >2
