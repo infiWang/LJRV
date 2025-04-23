@@ -3034,14 +3034,13 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // RA = dst*8 or unused, RD = src*8, JMP with RD = target
     |  add RD, BASE, RD
     |   lhu TMP2, OFS_RD(PC)
-    |  ld TMP0, 0(RD)
+    |  ld CRET1, 0(RD)
     |   addi PC, PC, 4
-    |  gettp TMP0, TMP0
+    |  gettp TMP0, CRET1
     |  add RA, BASE, RA
     |  sltiu TMP0, TMP0, LJ_TISTRUECOND		// TMP0=1 true; TMP0=0 false
     |  decode_BC4b TMP2
     |  lui TMP3, (-(BCBIAS_J*4 >> 12)) & 0xfffff		// -BCBIAS_J*4
-    |  ld CRET1, 0(RD)
     |  addw TMP2, TMP2, TMP3		// (jump-0x8000)<<2
     if (op == BC_IST || op == BC_ISTC) {
       |  beqz TMP0, >1
