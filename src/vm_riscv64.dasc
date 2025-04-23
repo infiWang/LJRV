@@ -4000,11 +4000,10 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
   case BC_CALLMT:
     |  // RA = base*8, (RB = 0,) RC = extra_nargs*8
     |  addw NARGS8:RD, NARGS8:RD, MULTRES
-    |  j ->BC_CALLT_Z1
+    |  // Fall through. Assumes BC_CALLT follows.
     break;
   case BC_CALLT:
     |  // RA = base*8, (RB = 0,) RC = (nargs+1)*8
-    |->BC_CALLT_Z1:
     |  add RA, BASE, RA
     |  ld LFUNC:RB, 0(RA)
     |   mv NARGS8:RC, RD
