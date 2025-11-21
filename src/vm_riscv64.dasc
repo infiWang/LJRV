@@ -2660,7 +2660,6 @@ static void build_subroutines(BuildCtx *ctx)
   |  .type CCSTATE, CCallState, CARG1
   |  lw TMP1, CCSTATE->spadj
   |  lbu CARG2, CCSTATE->nsp
-  |  lbu CARG3, CCSTATE->nfpr
   |  mv TMP2, sp
   |  sub sp, sp, TMP1
   |  sd ra, -8(TMP2)
@@ -2678,7 +2677,6 @@ static void build_subroutines(BuildCtx *ctx)
   |  addi TMP2, TMP2, 8
   |  bltu TMP1, TMP3, <1
   |2:
-  |  beqz CARG3, >3
   |  fld FARG1, CCSTATE->fpr[0]
   |  fld FARG2, CCSTATE->fpr[1]
   |  fld FARG3, CCSTATE->fpr[2]
@@ -2687,7 +2685,6 @@ static void build_subroutines(BuildCtx *ctx)
   |  fld FARG6, CCSTATE->fpr[5]
   |  fld FARG7, CCSTATE->fpr[6]
   |  fld FARG8, CCSTATE->fpr[7]
-  |3:
   |  ld CFUNCADDR, CCSTATE->func
   |  ld CARG2, CCSTATE->gpr[1]
   |  ld CARG3, CCSTATE->gpr[2]

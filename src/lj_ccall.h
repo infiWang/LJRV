@@ -141,7 +141,9 @@ typedef union FPRArg {
 typedef intptr_t GPRArg;
 typedef union FPRArg {
   double d;
+  uint64_t u;
   struct { LJ_ENDIAN_LOHI(float f; , float g;) };
+  struct { LJ_ENDIAN_LOHI(uint32_t lo; , uint32_t hi;) };
 } FPRArg;
 
 #else
@@ -190,7 +192,7 @@ typedef LJ_ALIGN(CCALL_ALIGN_CALLSTATE) struct CCallState {
   uint8_t resx87;		/* Result on x87 stack: 1:float, 2:double. */
 #elif LJ_TARGET_ARM64
   void *retp;			/* Aggregate return pointer in x8. */
-#elif LJ_TARGET_PPC || LJ_TARGET_RISCV64
+#elif LJ_TARGET_PPC
   uint8_t nfpr;			/* Number of arguments in FPRs. */
 #endif
 #if LJ_32
