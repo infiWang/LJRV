@@ -144,14 +144,6 @@ struct riscv_hwprobe {
 
 /* -- JIT engine parameters ----------------------------------------------- */
 
-#if LJ_TARGET_WINDOWS || LJ_64
-/* See: https://devblogs.microsoft.com/oldnewthing/20031008-00/?p=42223 */
-#define JIT_P_sizemcode_DEFAULT		64
-#else
-/* Could go as low as 4K, but the mmap() overhead would be rather high. */
-#define JIT_P_sizemcode_DEFAULT		32
-#endif
-
 /* Optimization parameters and their defaults. Length is a char in octal! */
 #define JIT_PARAMDEF(_) \
   _(\010, maxtrace,	1000)	/* Max. # of traces in cache. */ \
@@ -171,9 +163,9 @@ struct riscv_hwprobe {
   _(\011, recunroll,	2)	/* Min. unroll for true recursion. */ \
   \
   /* Size of each machine code area (in KBytes). */ \
-  _(\011, sizemcode,	JIT_P_sizemcode_DEFAULT) \
+  _(\011, sizemcode,	64) \
   /* Max. total size of all machine code areas (in KBytes). */ \
-  _(\010, maxmcode,	512) \
+  _(\010, maxmcode,	2048) \
   /* End of list. */
 
 enum {
@@ -415,9 +407,13 @@ enum {
   LJ_K64_M2P64,		/* -2^64 */
 #endif
 #endif
+#if LJ_TARGET_ARM64 || LJ_TARGET_MIPS64
+  LJ_K64_VM_EXIT_HANDLER,
+  LJ_K64_VM_EXIT_INTERP,
+#endif
   LJ_K64__MAX,
 };
-#define LJ_K64__USED	(LJ_TARGET_X86ORX64 || LJ_TARGET_MIPS)
+#define LJ_K64__USED	(LJ_TARGET_X86ORX64 || LJ_TARGET_ARM64 || LJ_TARGET_MIPS)
 
 enum {
 #if LJ_TARGET_X86ORX64
@@ -433,6 +429,10 @@ enum {
 #if LJ_TARGET_MIPS64
   LJ_K32_2P63,		/* 2^63 */
   LJ_K32_M2P64,		/* -2^64 */
+#endif
+#if LJ_TARGET_PPC || LJ_TARGET_MIPS32
+  LJ_K32_VM_EXIT_HANDLER,
+  LJ_K32_VM_EXIT_INTERP,
 #endif
   LJ_K32__MAX
 };
@@ -553,6 +553,7 @@ typedef struct jit_State {
   MCode *mcbot;		/* Bottom of current mcode area. */
   size_t szmcarea;	/* Size of current mcode area. */
   size_t szallmcarea;	/* Total size of all allocated mcode areas. */
+  uintptr_t mcmin, mcmax;	/* Mcode allocation range. */
 
   TValue errinfo;	/* Additional info element for trace errors. */
 
