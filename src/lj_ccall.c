@@ -1442,10 +1442,32 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
   ((uint64_t *)dp)[0] = 0xffffffff00000000ul | ((uint32_t *)dp)[0];
   break;
       }
-      case MIX_FI:
-  /* Relys on int are always aligned to XLEN */
-  ((uint64_t *)dp)[0] = 0xffffffff00000000ul | ((uint32_t *)dp)[0];
+      case MIX_FI: {
+  lj_assertL(sz == 8 || sz == 16, "invalid MIX_FI size %d", (int)sz);
+  if (ngpr >= CCALL_NARG_GPR) break;
+  if (sz == 8) {
+    FPRArg farg = { .hi = 0xffffffffu, .lo = ((uint32_t *)dp)[0] };
+    if (!isva && nfpr + 1 <= CCALL_NARG_FPR) {
+      cc->fpr[nfpr++] = farg;
+      goto fi_next;
+    } else if (ngpr + 1 <= CCALL_NARG_GPR) {
+      cc->gpr[ngpr++] = farg.u;
+fi_next:
+      ((uint32_t *)dp)[0] = ((uint32_t *)dp)[1];
+      ((uint32_t *)dp)[1] = 0, nsp = mnsp;
+      if (ngpr + 1 <= CCALL_NARG_GPR) {
+        cc->gpr[ngpr++] = ((uint32_t *)dp)[0];
+        ((uint32_t *)dp)[0] = 0, nsp = onsp;
+      }
+    }
+    break;
+  } else /*if (sz == 16)*/ {
+    ((uint64_t *)dp)[0] |= 0xffffffff00000000ul;
+    /* fallthrough */
+  }
+      }
       case MIX_DI: {
+  lj_assertL(sz == 16, "invalid MIX_DI size %d", (int)sz);
   if (ngpr >= CCALL_NARG_GPR) break;
   if (!isva && nfpr + 1 <= CCALL_NARG_FPR) {
     cc->fpr[nfpr++] = (FPRArg){ .u = ((uint64_t *)dp)[0] };
@@ -1462,9 +1484,31 @@ di_next:
   }
   break;
       }
-      case MIX_IF:
-  ((uint64_t *)dp)[1] = 0xffffffff00000000ul | ((uint32_t *)dp)[1];
+      case MIX_IF: {
+  lj_assertL(sz == 8 || sz == 16, "invalid MIX_IF size %d", (int)sz);
+  if (sz == 8) {
+    FPRArg farg = { .hi = 0xffffffffu, .lo = ((uint32_t *)dp)[1] };
+    if (ngpr + 1 <= CCALL_NARG_GPR) {
+      cc->gpr[ngpr++] = ((uint32_t *)dp)[0];
+      ((uint32_t *)dp)[0] = ((uint32_t *)dp)[1];
+      ((uint32_t *)dp)[1] = 0, nsp = mnsp;
+      if (!isva && nfpr + 1 <= CCALL_NARG_FPR) {
+        cc->fpr[nfpr++] = farg;
+        goto if_next;
+      } else if (ngpr + 1 <= CCALL_NARG_GPR) {
+        cc->gpr[ngpr++] = farg.u;
+if_next:
+        ((uint32_t *)dp)[0] = 0, nsp = onsp;
+      }
+    }
+    break;
+  } else /*if (sz == 16)*/ {
+    ((uint64_t *)dp)[1] |= 0xffffffff00000000ul;
+    /* fallthrough */
+  }
+      }
       case MIX_ID: {
+  lj_assertL(sz == 16, "invalid MIX_ID size %d", (int)sz);
   if (ngpr + 1 <= CCALL_NARG_GPR) {
     cc->gpr[ngpr++] = ((uint64_t *)dp)[0];
     ((uint64_t *)dp)[0] = ((uint64_t *)dp)[1];
