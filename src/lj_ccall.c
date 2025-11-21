@@ -648,7 +648,7 @@
   /* Pass complex in two FPRs or two GPRs or on stack. */ \
   else if (sz == 2*sizeof(float)) { \
     mix = (CCallStructMix){ .val = MIX_FF }; \
-    sz = 2*CTSIZE_PTR; \
+    sz = CTSIZE_PTR; \
   } else /*if (sz == 2*sizeof(double))*/ { \
     mix = (CCallStructMix){ .val = MIX_DD }; \
     sz = 2*CTSIZE_PTR; \
@@ -1306,7 +1306,9 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
     CTSize sz;
     MSize n, isfp = 0, isva = 0;
 #if LJ_TARGET_RISCV64
+    MSize onsp, mnsp;
     CCallStructMix mix = { .val = MIX_UNINIT };
+    int isstack = 0;
 #endif
     void *dp, *rp = NULL;
 
@@ -1347,7 +1349,8 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
 
     /* Otherwise pass argument on stack. */
 #if LJ_TARGET_RISCV64
-    MSize onsp = nsp;
+    isstack = 1;
+    onsp = nsp;
 #endif
     if (CCALL_ALIGN_STACKARG) {  /* Align argument on stack. */
       MSize align = (1u << ctype_align(d->info)) - 1;
@@ -1362,7 +1365,7 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
     dp = ((uint8_t *)cc->stack) + nsp;
 #endif
 #if LJ_TARGET_RISCV64
-    MSize mnsp = nsp + n * CTSIZE_PTR / 2;
+    mnsp = nsp + n * CTSIZE_PTR / 2;
 #endif
     nsp += CCALL_PACK_STACKARG ? sz : n * CTSIZE_PTR;
     if ((int32_t)nsp > CCALL_SIZE_STACK) {  /* Too many arguments. */
@@ -1436,6 +1439,7 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
   break;
       }
       case MIX_FF:
+  if (isstack) break;
   ((uint64_t *)dp)[1] = 0xffffffff00000000ul | ((uint32_t *)dp)[1];
       case MIX_FX:
       case MIX_FD: {
