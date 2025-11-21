@@ -26,7 +26,6 @@ For distro maintainers and packagers, we encourage one to follow our branch and 
 - [x] JIT Compiler
 
 LJRV is still considered of beta quality, take it with a grain of salt.
-For production usage, you might want to disable the JIT compiler during compilation by setting `XCFLAGS+= -DLUAJIT_DISABLE_JIT` in Makefile or environment variable.
 
 ## Bug Report
 
@@ -38,6 +37,4 @@ LuaJIT is Copyright (C) 2005-2025 Mike Pall.
 LuaJIT is free software, released under the MIT license.
 See full Copyright Notice in the COPYRIGHT file or in luajit.h.
 
-LJRV is Copyright (C) 2022-2025 PLCT Lab, ISCAS. Contributed by gns.
 LJRV is free software, released under the MIT license.
-LJRV is part of RuyiSDK.
