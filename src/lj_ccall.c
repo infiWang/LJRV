@@ -1458,7 +1458,7 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
       cc->gpr[ngpr++] = farg.u;
 fi_next:
       ((uint32_t *)dp)[0] = ((uint32_t *)dp)[1];
-      ((uint32_t *)dp)[1] = 0, nsp = mnsp;
+      ((uint32_t *)dp)[1] = 0;
       if (ngpr + 1 <= CCALL_NARG_GPR) {
         cc->gpr[ngpr++] = ((uint32_t *)dp)[0];
         ((uint32_t *)dp)[0] = 0, nsp = onsp;
@@ -1495,7 +1495,7 @@ di_next:
     if (ngpr + 1 <= CCALL_NARG_GPR) {
       cc->gpr[ngpr++] = ((uint32_t *)dp)[0];
       ((uint32_t *)dp)[0] = ((uint32_t *)dp)[1];
-      ((uint32_t *)dp)[1] = 0, nsp = mnsp;
+      ((uint32_t *)dp)[1] = 0;
       if (!isva && nfpr + 1 <= CCALL_NARG_FPR) {
         cc->fpr[nfpr++] = farg;
         goto if_next;
