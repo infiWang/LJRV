@@ -623,7 +623,7 @@
       memcpy(dp, sp, ctr->size); \
       break; \
     } \
-    default: lj_assertX(0); \
+    default: lj_assertL(0, "Invalid ret mix %d", mix.val); \
   }
 
 #define CCALL_HANDLE_COMPLEXRET \
