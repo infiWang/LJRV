@@ -670,10 +670,16 @@
 
 
 #define CCALL_HANDLE_REGARG \
-  if (!isva && ngpr < CCALL_NUM_GPR) {  /* Try determine MIX registers. */ \
+  if (!isva) { /* Try determine MIX registers. */ \
     int n2 = 0; \
     switch (mix.val) { \
-      case MIX_UNINIT: case MIX_FAILED: \
+      case MIX_UNINIT: \
+        if (isfp) { \
+          n2 = 1; \
+          break; \
+        } \
+      /* fallthrough */ \
+      case MIX_FAILED: \
       /* MIX_[IFD]X are just like a standalone element */ \
       case MIX_IX: goto reghandle_gpr; \
       case MIX_FX: case MIX_DX: \
