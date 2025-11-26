@@ -99,18 +99,30 @@ static MCode *asm_sparejump_use(MCode *mcarea, MCode *target)
 static void asm_exitstub_setup(ASMState *as, ExitNo nexits)
 {
   ExitNo i;
+  MCode *target = (MCode *)(void *)lj_vm_exit_handler;
   MCode *mxp = as->mctop;
   if (mxp - (nexits + 4 + MCLIM_REDZONE) < as->mclim)
     asm_mclimit(as);
   for (i = nexits-1; (int32_t)i >= 0; i--)
     *--mxp = RISCVI_JAL | RISCVF_D(RID_RA) | RISCVF_IMMJ((uintptr_t)(4*(-4-i)));
-  ptrdiff_t delta = (char *)lj_vm_exit_handler - (char *)(mxp-3);
-  /* 1: sw ra, 0(sp); auipc+jalr ->vm_exit_handler; lui x0, traceno; jal <1; jal <1; ... */
+  ptrdiff_t delta = (char *)target - (char *)(mxp-3);
+  /* !ind: 1: sw ra, 0(sp); auipc+jalr ->vm_exit_handler; lui x0, traceno; jal <1; jal <1; ...
+   ** ind: 1: sw ra, 0(sp); ld tmp, K64_VXH(gl); jalr tmp; lui x0, traceno; jal <1; jal <1; ...
+   ** Note: RID_TMP is RID_RA!
+   */
   *--mxp = RISCVI_LUI | RISCVF_IMMU(as->T->traceno);
-  *--mxp = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_TMP)
-         | RISCVF_IMMI(RISCVF_LO((uintptr_t)(void *)delta));
-  *--mxp = RISCVI_AUIPC | RISCVF_D(RID_TMP)
-         | RISCVF_IMMU(RISCVF_HI((uintptr_t)(void *)delta));
+  if (checki32auipc(delta)) {
+    *--mxp = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_TMP)
+           | RISCVF_IMMI(RISCVF_LO((uintptr_t)(void *)delta));
+    *--mxp = RISCVI_AUIPC | RISCVF_D(RID_TMP)
+           | RISCVF_IMMU(RISCVF_HI((uintptr_t)(void *)delta));
+  } else {
+    *--mxp = RISCVI_JALR | RISCVF_D(RID_RA) | RISCVF_S1(RID_TMP) | RISCVF_IMMI(0);
+    *--mxp = RISCVI_LD | RISCVF_D(RID_TMP) | RISCVF_S1(RID_GL)
+           | RISCVF_IMMI(glofs(as, &as->J->k64[LJ_K64_VM_EXIT_HANDLER]));
+    lj_assertA(checki12(glofs(as, &as->J->k64[LJ_K64_VM_EXIT_HANDLER])),
+               "exit handler address offset overflow");
+  }
   *--mxp = RISCVI_SD | RISCVF_S2(RID_RA) | RISCVF_S1(RID_SP);
   as->mctop = mxp;
 }
@@ -128,7 +140,6 @@ static void asm_guard(ASMState *as, RISCVIns riscvi, Reg rs1, Reg rs2)
   MCode *p = as->mcp;
   if (LJ_UNLIKELY(p == as->invmcp)) {
     as->loopinv = 1;
-    as->mcp = ++p;
     *p = RISCVI_JAL | RISCVF_IMMJ((char *)target - (char *)p);
     riscvi = riscvi^RISCVF_FUNCT3(1);  /* Invert cond. */
     target = p - 1;  /* Patch target later in asm_loop_fixup. */
@@ -1921,33 +1932,37 @@ static Reg asm_head_side_base(ASMState *as, IRIns *irp)
 /* Fixup the tail code. */
 static void asm_tail_fixup(ASMState *as, TraceNo lnk)
 {
-  MCode *p = as->mctop;
-  MCode *target = lnk ? traceref(as->J,lnk)->mcode : (MCode *)lj_vm_exit_interp;
+  MCode *mcp = as->mctail;
+  MCode *target;
   int32_t spadj = as->T->spadjust;
-  if (spadj == 0) {
-    p[-3] = RISCVI_NOP;
-    // as->mctop = p-2;
-  } else {
-    /* Patch stack adjustment. */
-    p[-3] = RISCVI_ADDI | RISCVF_D(RID_SP) | RISCVF_S1(RID_SP) | RISCVF_IMMI(spadj);
+  if (spadj) { /* Emit stack adjustment */
+    *mcp++ = RISCVI_ADDI | RISCVF_D(RID_SP) | RISCVF_S1(RID_SP) | RISCVF_IMMI(spadj);
   }
-  /* Patch exit jump. */
-  ptrdiff_t delta = (char *)target - (char *)(p - 2);
-  p[-2] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
-  p[-1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
+  /* Emit exit jump. */
+  target = lnk ? traceref(as->J,lnk)->mcode : (MCode *)lj_vm_exit_interp;
+  ptrdiff_t delta = (char *)target - (char *)mcp;
+  if (lnk || checki32auipc(delta)) {
+    *mcp++ = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
+    *mcp++ = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
+  } else {
+    *mcp++ = RISCVI_LD | RISCVF_D(RID_TMP) | RISCVF_S1(RID_GL) | RISCVF_IMMI(glofs(as, &as->J->k64[LJ_K64_VM_EXIT_INTERP]));
+    *mcp++ = RISCVI_JALR | RISCVF_S1(RID_TMP);
+  }
+  while (as->mctop > mcp)  *--as->mctop = RISCVI_NOP; /* NOP out unused space. */
 }
 
 /* Prepare tail of code. */
-static void asm_tail_prep(ASMState *as)
+static void asm_tail_prep(ASMState *as, TraceNo lnk)
 {
-  MCode *p = as->mctop - 2;  /* Leave room for exitstub. */
+  MCode *p = as->mctop - 1;  /* Leave room for exitstub. */
   if (as->loopref) {
-    as->invmcp = as->mcp = p;
+    as->invmcp = as->mcp = p; /* A single jump */
   } else {
-    as->mcp = p-1;  /* Leave room for stack pointer adjustment. */
+    as->mcp = (p -= 2);  /* Stack pointer adjustment and AUIPC+JALR */
     as->invmcp = NULL;
+    p[0] = p[1] = p[2] = RISCVI_EBREAK;
   }
-  p[0] = p[1] = RISCVI_NOP;  /* Prevent load/store merging. */
+  as->mctail = p;
 }
 
 /* -- Trace setup --------------------------------------------------------- */
@@ -2021,14 +2036,6 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
     }
   }
 	/* Ignore jump slot overflow. Child trace is simply not attached. */
-      }
-    } else if (p+2 == pe) {
-      if (p[0] == RISCVI_NOP && p[1] == RISCVI_NOP) {
-  ptrdiff_t delta = (char *)target - (char *)p;
-  lj_assertJ(checki32(delta), "jump target out of range");
-  p[0] = RISCVI_AUIPC | RISCVF_D(RID_TMP) | RISCVF_IMMU(RISCVF_HI(delta));
-  p[1] = RISCVI_JALR | RISCVF_S1(RID_TMP) | RISCVF_IMMI(RISCVF_LO(delta));
-  if (!cstart) cstart = p;
       }
     }
   }

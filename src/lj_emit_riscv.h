@@ -319,6 +319,8 @@ static void emit_loadk32(ASMState *as, Reg rd, int32_t i)
 /* Prefer rematerialization of BASE/L from global_State over spills. */
 #define emit_canremat(ref)	((ref) <= REF_BASE)
 
+#define glofs(as, k) \
+  ((intptr_t)((uintptr_t)(k) - (uintptr_t)&J2GG(as->J)->g))
 
 /* Load a 32 bit constant into a GPR. */
 #define emit_loadi(as, r, i)	emit_loadk32(as, r, i);
