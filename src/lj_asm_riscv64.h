@@ -521,14 +521,18 @@ static void asm_conv(ASMState *as, IRIns *ir)
     } else {
       Reg left = ra_alloc1(as, lref, RSET_FPR);
       Reg dest = ra_dest(as, ir, RSET_GPR);
-      RISCVIns riscvi = irt_is64(ir->t) ?
-  (st == IRT_NUM ?
-   (irt_isi64(ir->t) ? RISCVI_FCVT_L_D : RISCVI_FCVT_LU_D) :
-   (irt_isi64(ir->t) ? RISCVI_FCVT_L_S : RISCVI_FCVT_LU_S)) :
-  (st == IRT_NUM ?
-   (irt_isint(ir->t) ? RISCVI_FCVT_W_D : RISCVI_FCVT_WU_D) :
-   (irt_isint(ir->t) ? RISCVI_FCVT_W_S : RISCVI_FCVT_WU_S));
-      emit_ds(as, riscvi|RISCVF_RM(RISCVRM_RTZ), dest, left);
+      lj_assertA(!irt_isu32(ir->t), "bad CONV u32.fp emitted");
+      if (irt_isu64(ir->t)) {
+  MCLabel l_end = emit_label(as);
+  emit_ds(as, st == IRT_NUM ? RISCVI_FCVT_L_D : RISCVI_FCVT_L_S, dest, left);
+  emit_branch(as, RISCVI_BNE, dest, RID_ZERO, l_end, -1);
+  emit_ds(as, st == IRT_NUM ? RISCVI_FCVT_LU_D : RISCVI_FCVT_LU_S, dest, left);
+      } else {
+  RISCVIns riscvi = irt_is64(ir->t) ?
+    (st == IRT_NUM ? RISCVI_FCVT_L_D : RISCVI_FCVT_L_S) :
+    (st == IRT_NUM ? RISCVI_FCVT_W_D : RISCVI_FCVT_W_S);
+  emit_ds(as, riscvi|RISCVF_RM(RISCVRM_RTZ), dest, left);
+      }
     }
   } else if (st >= IRT_I8 && st <= IRT_U16) { /* Extend to 32 bit integer. */
     Reg dest = ra_dest(as, ir, RSET_GPR);

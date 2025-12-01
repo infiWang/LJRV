@@ -2513,6 +2513,46 @@ static void build_subroutines(BuildCtx *ctx)
   |
   |
   |//-----------------------------------------------------------------------
+  |//-- Number conversion functions --------------------------------------------
+  |//-----------------------------------------------------------------------
+  |
+  |// int64_t lj_vm_num2int_check(double x)
+  |->vm_num2int_check:
+  |  fcvt.w.d CRET1, FARG1, rtz
+  |  fcvt.d.w FARG2, CRET1
+  |  feq.d CARG2, FARG1, FARG2
+  |  beqz CARG2, >1
+  |  ret
+  |1:
+  |  lui CRET1, 0x80000
+  |  slli CRET1, CRET1, 8
+  |  addi CRET1, CRET1, 0x80
+  |  slli CRET1, CRET1, 24
+  |  ret
+  |
+  |// int64_t lj_vm_num2i64(double x)
+  |->vm_num2i64:
+  |  fcvt.l.d CRET1, FARG1, rtz
+  |  ret
+  |
+  |// uint64_t lj_vm_num2u64(double x)
+  |->vm_num2u64:
+  |  fcvt.lu.d CRET1, FARG1, rtz
+  |  bnez CRET1, >1
+  |  fcvt.l.d CRET1, FARG1, rtz
+  |1:
+  |  ret
+  |
+  |// int32_t lj_vm_tobit(double x)
+  |->vm_tobit:
+  |  lui CARG2, 0x43380	// 2^52 + 2^51.
+  |  slli CARG2, CARG2, 32
+  |  fmv.d.x FARG2, CARG2
+  |  fadd.d FARG2, FARG1, FARG2
+  |  fmv.x.w CRET1, FARG2
+  |  ret
+  |
+  |//-----------------------------------------------------------------------
   |//-- Miscellaneous functions --------------------------------------------
   |//-----------------------------------------------------------------------
   |
