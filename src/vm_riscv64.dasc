@@ -3811,18 +3811,18 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |   li TMP3, LJ_TSTR
     |  add NODE:TMP2, NODE:TMP2, TMP1	// node = tab->node + (idx*32-idx*8)
     |   settp STR:RC, TMP3		// Tagged key to look for.
-    |  fld FTMP0, 0(RA)
     |1:
     |  ld TMP0, NODE:TMP2->key
     |   ld CARG2, NODE:TMP2->val
     |    ld NODE:TMP1, NODE:TMP2->next
     |     lbu TMP3, TAB:RB->marked
     |  bne TMP0, RC, >5
+    |  ld CARG1, 0(RA)
     |    ld TAB:TMP0, TAB:RB->metatable
     |   beq CARG2, TISNIL, >4		// Key found, but nil value?
     |2:
     |  andi TMP4, TMP3, LJ_GC_BLACK	// isblack(table)
-    |   fsd FTMP0, NODE:TMP2->val
+    |   sd CARG1, NODE:TMP2->val
     |  bnez TMP4, >7
     |3:
     |  ins_next
@@ -3855,8 +3855,9 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  // (lua_State *L, GCtab *t, TValue *k)
     |  call_intern BC_TSETS, lj_tab_newkey
     |  // Returns TValue *.
+    |  ld TMP0, 0(RA)
     |  ld BASE, L->base
-    |   fsd FTMP0, 0(CRET1)
+    |   sd TMP0, 0(CRET1)
     |  j <3				// No 2nd write barrier needed.
     |
     |7:  // Possible table write barrier for the value. Skip valiswhite check.
