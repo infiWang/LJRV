@@ -3145,21 +3145,26 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  ld TMP0, 0(RB)
     |  lui TMP1, 0x80000
     |  gettp CARG3, TMP0
-    |  bne CARG3, TISNUM, >1
+    |  bne CARG3, TISNUM, >2
     |  sext.w TMP0, TMP0
     |  bxeq TMP0, TMP1, ->vmeta_unm      // Meta handler deals with -2^31.
     |  negw TMP0, TMP0
+    |  beqz TMP0, >3
     |  zext.w TMP0, TMP0
     |  settp_b TMP0, TISNUM
-    |  j >2
     |1:
+    |  ins_next1
+    |   sd TMP0, 0(RA)
+    |  ins_next2
+    |2:
     |  sltiu TMP3, CARG3, LJ_TISNUM
     |   slli TMP1, TMP1, 32
     |  bxeqz TMP3, ->vmeta_unm
     |   xor TMP0, TMP0, TMP1     // sign => ~sign
-    |2:
-    |   sd TMP0, 0(RA)
-    |  ins_next
+    |  j <1
+    |3:
+    |  slli TMP0, TMP1, 32
+    |  j <1
     break;
   case BC_LEN:
     |  // RA = dst*8, RD = src*8
