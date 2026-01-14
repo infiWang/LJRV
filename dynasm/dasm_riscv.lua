@@ -1,10 +1,10 @@
 ------------------------------------------------------------------------------
 -- DynASM RISC-V module.
 --
--- Copyright (C) 2005-2025 Mike Pall. All rights reserved.
+-- Copyright (C) 2022-2026 ISRC, ISCAS.
 -- See dynasm.lua for full copyright notice.
 --
--- Contributed by gns from PLCT Lab, ISCAS.
+-- Contributed by gns from PLCT Lab, ISRC, ISCAS.
 ------------------------------------------------------------------------------
 
 local riscv32 = riscv32
@@ -17,7 +17,7 @@ local _info = {
   version =	"1.5.0",
   vernum =	 10500,
   release =	"2022-07-12",
-  author =	"Mike Pall",
+  author =	"gns",
   license =	"MIT",
 }
 

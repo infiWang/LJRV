@@ -1,11 +1,11 @@
 ------------------------------------------------------------------------------
 -- LuaJIT RISC-V disassembler module.
 --
--- Copyright (C) 2005-2025 Mike Pall. All rights reserved.
+-- Copyright (C) 2022-2026 ISRC, ISCAS. All rights reserved.
 -- Released under the MIT license. See Copyright Notice in luajit.h
 --
 -- Contributed by Milos Poletanovic from Syrmia.com.
--- Contributed by gns from PLCT Lab, ISCAS.
+-- Contributed by gns from PLCT Lab, ISRC, ISCAS.
 ------------------------------------------------------------------------------
 -- This is a helper module used by the LuaJIT machine code dumper module.
 --

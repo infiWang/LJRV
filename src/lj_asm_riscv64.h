@@ -1,8 +1,8 @@
 /*
 ** RISC-V IR assembler (SSA IR -> machine code).
-** Copyright (C) 2005-2025 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2022-2026 ISRC, ISCAS. See Copyright Notice in luajit.h
 **
-** Contributed by gns from PLCT Lab, ISCAS.
+** Contributed by gns from PLCT Lab, ISRC, ISCAS.
 */
 
 /* -- Register allocator extensions --------------------------------------- */
