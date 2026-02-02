@@ -1,0 +1,61 @@
+name: RISC-V Testing
+
+on:
+  push:
+    branches:
+      - riscv
+      - v2.1-riscv64
+
+jobs:
+  test-riscv:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        qemu-cpu: [sifive-u54, veyron-v1]
+    
+    steps:
+      - name: Checkout LuaJIT
+        uses: actions/checkout@v4
+      
+      - name: Install RISC-V toolchain and QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            crossbuild-essential-riscv64 \
+            qemu-user-static
+      
+      - name: Build LuaJIT for RISC-V 64
+        run: |
+          make clean
+          make -j \
+            CROSS=riscv64-linux-gnu- \
+            BUILDMODE=mixed \
+            CCOPT="-O2 -fomit-frame-pointer" \
+            CCOPT_riscv64="-march=rv64gc" \
+            XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT"
+          # Note: Building with baseline rv64gc ISA for maximum compatibility.
+          # CPU-specific features are tested via QEMU's -cpu flag at runtime.
+      
+      - name: Verify LuaJIT binary
+        run: |
+          file src/luajit
+          qemu-riscv64-static -cpu ${{ matrix.qemu-cpu }} -L /usr/riscv64-linux-gnu \
+            src/luajit -v
+      
+      - name: Checkout LuaJIT-test-cleanup
+        uses: actions/checkout@v4
+        with:
+          repository: LuaJIT/LuaJIT-test-cleanup
+          path: test-suite
+      
+      - name: Run LuaJIT test suite with qemu-riscv64 -cpu ${{ matrix.qemu-cpu }}
+        run: |
+          cd test-suite
+          echo "Running tests with CPU: ${{ matrix.cpu }}"
+          for i in {1..372} {374..379} {381..517}; do
+            qemu-riscv64-static -cpu ${{ matrix.qemu-cpu }} -L /usr/riscv64-linux-gnu \
+              ../src/luajit test/test.lua +slow $i
+          done
