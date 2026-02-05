@@ -706,6 +706,7 @@
       } \
     } \
   } else {  /* Try to pass argument in GPRs. */ \
+  mix.val = MIX_FAILED; \
   reghandle_gpr: \
       if (ngpr + n <= maxgpr) { \
         dp = &cc->gpr[ngpr]; \
@@ -1312,7 +1313,7 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
     CTSize sz;
     MSize n, isfp = 0, isva = 0;
 #if LJ_TARGET_RISCV64
-    MSize onsp, mnsp;
+    MSize onsp = 0, mnsp = 0;
     CCallStructMix mix = { .val = MIX_UNINIT };
     int isstack = 0;
 #endif
