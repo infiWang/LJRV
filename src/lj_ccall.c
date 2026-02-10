@@ -592,28 +592,22 @@
       break; \
     } \
     case MIX_FX: case MIX_DX: \
-    case MIX_FF: case MIX_FD: \
-    case MIX_DF: case MIX_DD: { \
+    case MIX_FF: case MIX_FD: case MIX_DF: case MIX_DD: \
+    case MIX_FI: case MIX_DI: case MIX_IF: case MIX_ID: { \
+      CTSize sz = ctr->size; \
+      lj_assertL(sz == 8 || sz == 16, "invalid MIX size %d", (int)sz); \
+      uint8_t *bp = (uint8_t *)dp; \
       eCCallStructMixElem es[2] = { mix.e1, mix.e2 }; \
-      for (int ti = 0; ti < 2; ti++) { \
-        if (es[ti] == MIX_ELEM_FLOAT) { \
-          ((float *)dp)[ti] = cc->fpr[ti].f; \
-        } else /*if (es[ti] == MIX_ELEM_DOUBLE)*/ { \
-          ((double *)dp)[ti] = cc->fpr[ti].d; \
-        } \
-      } \
-      break; \
-    } \
-    case MIX_FI: case MIX_DI: \
-    case MIX_IF: case MIX_ID: { \
-      eCCallStructMixElem es[2] = { mix.e1, mix.e2 }; \
-      for (int ti = 0; ti < 2; ti++) { \
-        if (es[ti] == MIX_ELEM_FLOAT) { \
-          ((float *)dp)[ti] = cc->fpr[0].f; \
-        } else if (es[ti] == MIX_ELEM_DOUBLE) { \
-          ((double *)dp)[ti] = cc->fpr[0].d; \
-        } else /*if (es[ti] == MIX_ELEM_INT)*/ { \
-          ((intptr_t *)dp)[ti] = cc->gpr[0]; \
+      CTSize ofs = 0; \
+      for (int ti = 0, fpi = 0; ti < 2; ti++, ofs += sz / 2) { \
+        switch (es[ti]) { \
+          case MIX_ELEM_FLOAT: { *(float *)(bp+ofs) = cc->fpr[fpi++].f; break; } \
+          case MIX_ELEM_DOUBLE: { *(double *)(bp+ofs) = cc->fpr[fpi++].d; break; } \
+          case MIX_ELEM_INT: \
+            if (sz == 2*sizeof(int32_t)) { *(int32_t *)(bp+ofs) = (int32_t)cc->gpr[0]; } \
+            else                         { *(int64_t *)(bp+ofs) = cc->gpr[0]; } \
+            break; \
+          default: continue; \
         } \
       } \
       break; \
