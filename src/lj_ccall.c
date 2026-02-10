@@ -1307,7 +1307,7 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
     CTSize sz;
     MSize n, isfp = 0, isva = 0;
 #if LJ_TARGET_RISCV64
-    MSize onsp = 0, mnsp = 0;
+    MSize onsp = nsp, mnsp = nsp;
     CCallStructMix mix = { .val = MIX_UNINIT };
     int isstack = 0;
 #endif
@@ -1432,8 +1432,7 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
     }
 #elif LJ_TARGET_RISCV64
     switch (mix.val) {
-      case MIX_UNINIT:
-  break;
+      case MIX_UNINIT: break;
       /* Fix MIX values */
       case MIX_DF: {
   ((uint32_t *)dp)[3] = 0xffffffffu;
