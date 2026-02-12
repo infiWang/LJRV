@@ -1446,85 +1446,23 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
   ((uint64_t *)dp)[0] = 0xffffffff00000000ul | ((uint32_t *)dp)[0];
   break;
       }
-      case MIX_FI: {
-  lj_assertL(sz == 8 || sz == 16, "invalid MIX_FI size %d", (int)sz);
+      case MIX_FI: case MIX_DI: case MIX_IF: case MIX_ID: {
+  lj_assertL(sz == 2*sizeof(int32_t) || sz == 2*sizeof(int64_t), "invalid MIX size %d", (int)sz);
   if (ngpr >= CCALL_NARG_GPR) break;
-  if (sz == 8) {
-    FPRArg farg = { .hi = 0xffffffffu, .lo = ((uint32_t *)dp)[0] };
-    if (!isva && nfpr + 1 <= CCALL_NARG_FPR) {
-      cc->fpr[nfpr++] = farg;
-      goto fi_next;
-    } else if (ngpr + 1 <= CCALL_NARG_GPR) {
-      cc->gpr[ngpr++] = farg.u;
-fi_next:
-      ((uint32_t *)dp)[0] = ((uint32_t *)dp)[1];
-      ((uint32_t *)dp)[1] = 0;
-      if (ngpr + 1 <= CCALL_NARG_GPR) {
-        cc->gpr[ngpr++] = ((uint32_t *)dp)[0];
-        ((uint32_t *)dp)[0] = 0, nsp = onsp;
-      }
-    }
-    break;
-  } else /*if (sz == 16)*/ {
-    ((uint64_t *)dp)[0] |= 0xffffffff00000000ul;
-    /* fallthrough */
-  }
-      }
-      case MIX_DI: {
-  lj_assertL(sz == 16, "invalid MIX_DI size %d", (int)sz);
-  if (ngpr >= CCALL_NARG_GPR) break;
-  if (!isva && nfpr + 1 <= CCALL_NARG_FPR) {
-    cc->fpr[nfpr++] = (FPRArg){ .u = ((uint64_t *)dp)[0] };
-    goto di_next;
-  } else if (ngpr + 1 <= CCALL_NARG_GPR) {
-    cc->gpr[ngpr++] = ((uint64_t *)dp)[0];
-di_next:
-    ((uint64_t *)dp)[0] = ((uint64_t *)dp)[1];
-    ((uint64_t *)dp)[1] = 0, nsp = mnsp;
-    if (ngpr + 1 <= CCALL_NARG_GPR) {
-      cc->gpr[ngpr++] = ((uint64_t *)dp)[0];
-      ((uint64_t *)dp)[0] = 0, nsp = onsp;
-    }
-  }
-  break;
-      }
-      case MIX_IF: {
-  lj_assertL(sz == 8 || sz == 16, "invalid MIX_IF size %d", (int)sz);
-  if (sz == 8) {
-    FPRArg farg = { .hi = 0xffffffffu, .lo = ((uint32_t *)dp)[1] };
-    if (ngpr + 1 <= CCALL_NARG_GPR) {
-      cc->gpr[ngpr++] = ((uint32_t *)dp)[0];
-      ((uint32_t *)dp)[0] = ((uint32_t *)dp)[1];
-      ((uint32_t *)dp)[1] = 0;
-      if (!isva && nfpr + 1 <= CCALL_NARG_FPR) {
-        cc->fpr[nfpr++] = farg;
-        goto if_next;
-      } else if (ngpr + 1 <= CCALL_NARG_GPR) {
-        cc->gpr[ngpr++] = farg.u;
-if_next:
-        ((uint32_t *)dp)[0] = 0, nsp = onsp;
-      }
-    }
-    break;
-  } else /*if (sz == 16)*/ {
-    ((uint64_t *)dp)[1] |= 0xffffffff00000000ul;
-    /* fallthrough */
-  }
-      }
-      case MIX_ID: {
-  lj_assertL(sz == 16, "invalid MIX_ID size %d", (int)sz);
-  if (ngpr + 1 <= CCALL_NARG_GPR) {
-    cc->gpr[ngpr++] = ((uint64_t *)dp)[0];
-    ((uint64_t *)dp)[0] = ((uint64_t *)dp)[1];
-    ((uint64_t *)dp)[1] = 0, nsp = mnsp;
-    if (!isva && nfpr + 1 <= CCALL_NARG_FPR) {
-      cc->fpr[nfpr++] = (FPRArg){ .u = ((uint64_t *)dp)[0] };
-      goto id_next;
-    } else if (ngpr + 1 <= CCALL_NARG_GPR) {
-      cc->gpr[ngpr++] = ((uint64_t *)dp)[0];
-id_next:
-      ((uint64_t *)dp)[0] = 0, nsp = onsp;
-    }
+  eCCallStructMixElem es[2] = { mix.e1, mix.e2 };
+  for (int ti = 0; ti < 2; ti++) {
+    uint64_t val = (sz == 2*sizeof(int32_t)) ? ((uint32_t *)dp)[ti] : ((uint64_t *)dp)[ti];
+    if (es[ti] == MIX_ELEM_FLOAT) val |= 0xffffffff00000000ul;
+
+    if ((es[ti] == MIX_ELEM_FLOAT || es[ti] == MIX_ELEM_DOUBLE) &&
+        !isva && nfpr < CCALL_NARG_FPR) {
+      cc->fpr[nfpr++].u = val;
+    } else if (ngpr < CCALL_NARG_GPR) {
+      cc->gpr[ngpr++] = val;
+    } else break;
+
+    if (sz == 2*sizeof(int32_t) && ti > 0) { ((uint64_t *)dp)[0] = 0; nsp = onsp; }
+    if (sz == 2*sizeof(int64_t)) { ((uint64_t *)dp)[ti] = 0; nsp = (ti == 0) ? mnsp : onsp; }
   }
   break;
       }
