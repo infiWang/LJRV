@@ -72,7 +72,7 @@ static void resizestack(lua_State *L, MSize n)
   while (oldsize < realsize)  /* Clear new slots. */
     setnilV(st + oldsize++);
   L->stacksize = realsize;
-  if ((size_t)(mref(G(L)->jit_base, char) - (char *)oldst) < oldsize)
+  if ((size_t)(mref(G(L)->jit_base, char) - (char *)oldst) < (size_t)oldsize * sizeof(TValue))
     setmref(G(L)->jit_base, mref(G(L)->jit_base, char) + delta);
   L->base = (TValue *)((char *)L->base + delta);
   L->top = (TValue *)((char *)L->top + delta);
@@ -337,7 +337,7 @@ LUA_API void lua_close(lua_State *L)
 #if LJ_HASJIT
   G2J(g)->flags &= ~JIT_F_ON;
   G2J(g)->state = LJ_TRACE_IDLE;
-  lj_dispatch_update(g);
+  lj_dispatch_update(g, 0);
 #endif
   for (i = 0;;) {
     hook_enter(g);
