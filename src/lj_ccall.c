@@ -1344,10 +1344,9 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
 #if LJ_TARGET_RISCV64
     MSize onsp = nsp, mnsp = nsp;
     CCallStructMix mix = { .val = MIX_UNINIT };
-    int isstack = 0;
 #endif
     void *dp, *rp = NULL;
-#if LJ_TARGET_X64 && !LJ_ABI_WIN
+#if (LJ_TARGET_X64 && !LJ_ABI_WIN) || LJ_TARGET_RISCV64
     int onstack = 0;
 #endif
 
@@ -1388,7 +1387,7 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
 
     /* Otherwise pass argument on stack. */
 #if LJ_TARGET_RISCV64
-    isstack = 1;
+    onstack = 1;
     onsp = nsp;
 #endif
     if (CCALL_ALIGN_STACKARG) {  /* Align argument on stack. */
@@ -1480,7 +1479,7 @@ static int ccall_set_args(lua_State *L, CTState *cts, CType *ct,
   break;
       }
       case MIX_FF:
-  if (isstack) break;
+  if (onstack) break;
   ((uint64_t *)dp)[1] = 0xffffffff00000000ul | ((uint32_t *)dp)[1];
       case MIX_FX:
       case MIX_FD: {
