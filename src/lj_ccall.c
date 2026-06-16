@@ -1123,10 +1123,10 @@ static CCallStructClass ccall_classify_struct(CTState *cts, CType *ct)
     ct = ctype_get(cts, ct->sib);
     if (ctype_isfield(ct->info)) {
       sct = ctype_rawchild(cts, ct);
-      if (ctype_isarray(sct->info)) {
+      if (ctype_isarray(sct->info) && !sct->size) goto not_ag;
+      while (ctype_isarray(sct->info)) {
 	CType *cct = ctype_rawchild(cts, sct);
-	if (!cct->size) continue;
-	m = sct->size / cct->size;
+	m *= sct->size / cct->size;
 	sct = cct;
       }
       if (ctype_isfp(sct->info)) {
@@ -1177,7 +1177,7 @@ static CCallStructClass ccall_classify_struct(CTState *cts, CType *ct)
       } else {
 	goto not_ag;
       }
-    } else if (ctype_isbitfield(ct->info)) {
+    } else if (ctype_isbitfield(ct->info) && ctype_bitbsz(ct->info)) {
       goto not_ag;
     } else if (ctype_isxattrib(ct->info, CTA_SUBTYPE)) {
       sct = ctype_rawchild(cts, ct);
