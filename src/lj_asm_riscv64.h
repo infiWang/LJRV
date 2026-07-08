@@ -1526,7 +1526,8 @@ static void asm_bitshift(ASMState *as, IRIns *ir, RISCVIns riscvi, RISCVIns risc
   Reg left = ra_alloc1(as, ir->op1, RSET_GPR);
   uint32_t shmsk = irt_is64(ir->t) ? 63 : 31;
   if (irref_isk(ir->op2)) {  /* Constant shifts. */
-    uint32_t shift = (uint32_t)(IR(ir->op2)->i & shmsk);
+    IRIns *irr = IR(ir->op2);
+    uint32_t shift = (uint32_t) irr->o == IR_KINT ? (uint32_t)irr->i : (uint32_t)ir_kint64(irr)->u64;
     switch (riscvik) {
       case RISCVI_SRAI: case RISCVI_SRLI: case RISCVI_SLLI:
       case RISCVI_SRAIW: case RISCVI_SLLIW: case RISCVI_SRLIW:
