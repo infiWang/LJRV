@@ -766,6 +766,10 @@ static void callback_conv_result(CTState *cts, lua_State *L, TValue *o)
     if (ctr->size <= 4 &&
 	(LJ_ABI_SOFTFP || ctype_isinteger_or_bool(ctr->info)))
       *(int64_t *)dp = (int64_t)*(int32_t *)dp;
+#elif LJ_TARGET_X64
+    /* Always zero-extend results to 64 bits. */
+    if (ctr->size <= 4 && ctype_isinteger_or_bool(ctr->info))
+      *(uint64_t *)dp = (uint64_t)*(uint32_t *)dp;
 #endif
 #if LJ_TARGET_X86
     if (ctype_isfp(ctr->info))
@@ -786,6 +790,7 @@ lua_State * LJ_FASTCALL lj_ccallback_enter(CTState *cts, void *cf)
     exit(EXIT_FAILURE);
   }
   lj_trace_abort(g);  /* Never record across callback. */
+  setgcref(g->cur_L, obj2gco(L));
   /* Setup C frame. */
   cframe_prev(cf) = L->cframe;
   setcframe_L(cf, L);

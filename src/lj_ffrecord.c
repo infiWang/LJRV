@@ -745,7 +745,7 @@ static void LJ_FASTCALL recff_bit_nary(jit_State *J, RecordFFData *rd)
 static void LJ_FASTCALL recff_bit_shift(jit_State *J, RecordFFData *rd)
 {
 #if LJ_HASFFI
-  if (recff_bit64_shift(J, rd))
+  if (recff_bit64_shift(J, &J->base[0], &J->base[1], &rd->argv[0], &rd->argv[1], rd->data))
     return;
 #endif
   {
@@ -846,6 +846,17 @@ static void LJ_FASTCALL recff_string_range(jit_State *J, RecordFFData *rd)
 		   lj_ir_kint(J, 1));
     end = end+(int32_t)str->len+1;
   } else if ((MSize)end <= str->len) {
+    if (trstart == trend && start != 0) {  /* Common 1-char case. */
+      TRef trptr, tr = emitir(IRTI(IR_ADD), trstart, lj_ir_kint(J, -1));
+      emitir(IRTGI(IR_ULT), tr, trlen);
+      trptr = emitir(IRT(IR_STRREF, IRT_PGC), trstr, tr);
+      if (rd->data) {  /* Return string.sub result. */
+	J->base[0] = emitir(IRT(IR_SNEW, IRT_STR), trptr, lj_ir_kint(J, 1));
+      } else {  /* Return string.byte result. */
+	J->base[0] = emitir(IRT(IR_XLOAD, IRT_U8), trptr, IRXLOAD_READONLY);
+      }
+      return;
+    }
     emitir(IRTGI(IR_ULE), trend, trlen);
   } else {
     emitir(IRTGI(IR_GT), trend, trlen);
